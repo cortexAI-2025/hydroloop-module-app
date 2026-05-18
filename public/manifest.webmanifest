@@ -1,0 +1,20 @@
+{
+  "name": "HydroLoop™ Farm Manager",
+  "short_name": "HydroLoop",
+  "description": "Gestion de ferme hydroponique verticale A-Frame NFT",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#166534",
+  "background_color": "#f0fdf4",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "agriculture"],
+  "lang": "fr"
+}

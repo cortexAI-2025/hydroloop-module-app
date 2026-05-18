@@ -7,6 +7,7 @@ import type { BatchRecord } from '@/types/batch';
 import { PHASE_LABELS, PHASE_COLORS, detectAlerts } from '@/types/batch';
 import { predictHarvest, fmtHarvestDate } from '@/lib/harvest';
 import AlertBadge from '@/components/AlertBadge';
+import QRModal from '@/components/QRModal';
 import dynamic from 'next/dynamic';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'), { ssr: false });
@@ -115,18 +116,16 @@ export default function BatchReportPage() {
               href={`/batch/compare/${encodeURIComponent(data.SOUCHE)}`}
               className="btn-secondary text-xs"
             >
-              ⇄ Comparer souche
+              ⇄ Comparer
             </Link>
+            <QRModal batchId={data.BATCH_ID} />
             {status === 'done' && (
               <button className="btn-secondary text-xs" onClick={generate}>
                 ↻ Régénérer
               </button>
             )}
-            <button
-              className="btn-secondary text-xs"
-              onClick={() => window.print()}
-            >
-              🖨 Imprimer / PDF
+            <button className="btn-secondary text-xs" onClick={() => window.print()}>
+              🖨 PDF
             </button>
           </div>
         </div>

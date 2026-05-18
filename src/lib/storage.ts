@@ -1,6 +1,7 @@
 import type { BatchRecord, BatchFormData } from '@/types/batch';
 import { detectAlerts } from '@/types/batch';
 import { dbGetAll, dbGet, dbPut, dbDelete, dbGetByStrain } from './db';
+import { pushBatch } from './sync';
 
 const LS_LEGACY_KEY = 'hydroloop_batches';
 const LS_MIGRATED_KEY = 'hydroloop_migrated_v2';
@@ -42,13 +43,16 @@ export async function saveBatch(data: BatchFormData): Promise<BatchRecord> {
   const now = new Date().toISOString();
   const record: BatchRecord = { id: data.BATCH_ID, data, createdAt: now, updatedAt: now };
   await dbPut(record);
+  void pushBatch(record); // fire-and-forget cloud sync
   return record;
 }
 
 export async function updateReport(id: string, report: string): Promise<void> {
   const record = await dbGet(id);
   if (record) {
-    await dbPut({ ...record, report, updatedAt: new Date().toISOString() });
+    const updated = { ...record, report, updatedAt: new Date().toISOString() };
+    await dbPut(updated);
+    void pushBatch(updated);
   }
 }
 
