@@ -19,9 +19,11 @@ const defaultEnv = {
   photopériode: '18/6',
 };
 
+const phasePhotopériode: Record<number, string> = { 1: '18/6', 2: '18/6', 3: '12/12' };
+
 export default function NewBatchPage() {
   const router = useRouter();
-  const [batchId, setBatchId] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<BatchFormData>({
     BATCH_ID: '',
@@ -37,9 +39,7 @@ export default function NewBatchPage() {
   });
 
   useEffect(() => {
-    const id = generateBatchId();
-    setBatchId(id);
-    setForm((f) => ({ ...f, BATCH_ID: id }));
+    generateBatchId().then((id) => setForm((f) => ({ ...f, BATCH_ID: id })));
   }, []);
 
   const alerts = detectAlerts(form.DONNEES_ENVIRONNEMENTALES);
@@ -50,14 +50,6 @@ export default function NewBatchPage() {
       DONNEES_ENVIRONNEMENTALES: { ...f.DONNEES_ENVIRONNEMENTALES, [field]: value },
     }));
   }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    saveBatch(form);
-    router.push(`/batch/${form.BATCH_ID}`);
-  }
-
-  const phasePhotopériode: Record<number, string> = { 1: '18/6', 2: '18/6', 3: '12/12' };
 
   function onPhaseChange(phase: PhaseNumber) {
     setForm((f) => ({
@@ -70,6 +62,18 @@ export default function NewBatchPage() {
     }));
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await saveBatch(form);
+      router.push(`/batch/${form.BATCH_ID}`);
+    } catch {
+      setSaving(false);
+      alert('Erreur lors de la sauvegarde. Vérifiez les permissions IndexedDB.');
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-4 sm:px-6 py-8">
       <div className="mb-6">
@@ -80,7 +84,7 @@ export default function NewBatchPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* SECTION: Identification */}
+        {/* Identification */}
         <section className="card">
           <div className="section-title">Identification du batch</div>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -92,7 +96,7 @@ export default function NewBatchPage() {
               <label className="label">Souche *</label>
               <input
                 className="input"
-                placeholder="ex: Amnesia Haze, OG Kush..."
+                placeholder="ex : Amnesia Haze, OG Kush…"
                 required
                 value={form.SOUCHE}
                 onChange={(e) => setForm((f) => ({ ...f, SOUCHE: e.target.value }))}
@@ -123,7 +127,7 @@ export default function NewBatchPage() {
           </div>
         </section>
 
-        {/* SECTION: Phase */}
+        {/* Phase */}
         <section className="card">
           <div className="section-title">Phase de croissance</div>
           <div className="grid sm:grid-cols-3 gap-3 mb-4">
@@ -134,14 +138,14 @@ export default function NewBatchPage() {
                 2: 'border-amber-400 bg-amber-50 text-amber-800',
                 3: 'border-purple-400 bg-purple-50 text-purple-800',
               };
-              const selected = form.PHASE_NUMBER === ph;
+              const sel = form.PHASE_NUMBER === ph;
               return (
                 <button
                   key={ph}
                   type="button"
                   onClick={() => onPhaseChange(ph)}
                   className={`rounded-lg border-2 px-3 py-3 text-sm font-semibold text-left transition-all
-                    ${selected ? colors[ph] : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}
+                    ${sel ? colors[ph] : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'}`}
                 >
                   {labels[ph]}
                 </button>
@@ -164,7 +168,7 @@ export default function NewBatchPage() {
           </div>
         </section>
 
-        {/* SECTION: Données environnementales */}
+        {/* Environnement */}
         <section className="card">
           <div className="section-title">Données environnementales</div>
           {alerts.length > 0 && (
@@ -173,82 +177,73 @@ export default function NewBatchPage() {
             </div>
           )}
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <EnvField label="Temp. air jour (°C)" hint="Idéal: 22–26°C">
+            <EF label="Temp. air jour (°C)" hint="Idéal : 22–26°C">
               <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_air_jour}
                 onChange={(e) => setEnv('temperature_air_jour', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="Temp. air nuit (°C)" hint="Idéal: 16–20°C">
+            </EF>
+            <EF label="Temp. air nuit (°C)" hint="Idéal : 16–20°C">
               <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_air_nuit}
                 onChange={(e) => setEnv('temperature_air_nuit', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="Humidité relative (%)" hint="Idéal: 40–65%">
+            </EF>
+            <EF label="Humidité relative (%)" hint="Idéal : 40–65%">
               <input className="input" type="number" min={0} max={100} value={form.DONNEES_ENVIRONNEMENTALES.humidite_relative}
                 onChange={(e) => setEnv('humidite_relative', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="pH solution" hint="Plage: 5.5–6.5">
+            </EF>
+            <EF label="pH solution" hint="Plage : 5.5–6.5">
               <input className="input" type="number" step="0.1" min={4} max={8} value={form.DONNEES_ENVIRONNEMENTALES.pH}
                 onChange={(e) => setEnv('pH', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="EC (mS/cm)" hint="Plage: 0.8–3.0">
+            </EF>
+            <EF label="EC (mS/cm)" hint="Plage : 0.8–3.0">
               <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.EC}
                 onChange={(e) => setEnv('EC', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="Temp. solution (°C)" hint="Max: 22°C">
+            </EF>
+            <EF label="Temp. solution (°C)" hint="Max : 22°C">
               <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_solution}
                 onChange={(e) => setEnv('temperature_solution', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="Débit NFT (L/min)" hint="Min: 0.5 L/min">
+            </EF>
+            <EF label="Débit NFT (L/min)" hint="Min : 0.5 L/min">
               <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.debit_NFT}
                 onChange={(e) => setEnv('debit_NFT', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="O₂ dissous (mg/L)" hint="Min: 6 mg/L">
+            </EF>
+            <EF label="O₂ dissous (mg/L)" hint="Min : 6 mg/L">
               <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.oxygene_dissous}
                 onChange={(e) => setEnv('oxygene_dissous', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="PPFD (µmol/m²/s)" hint="Ph.3: 700–1000">
+            </EF>
+            <EF label="PPFD (µmol/m²/s)" hint="Ph.3 : 700–1 000">
               <input className="input" type="number" min={0} value={form.DONNEES_ENVIRONNEMENTALES.PPFD}
                 onChange={(e) => setEnv('PPFD', Number(e.target.value))} />
-            </EnvField>
-            <EnvField label="Photopériode (h/h)" hint="ex: 18/6 ou 12/12">
-              <input className="input" type="text" placeholder="18/6" value={form.DONNEES_ENVIRONNEMENTALES.photopériode}
+            </EF>
+            <EF label="Photopériode (h/h)" hint="ex : 18/6 ou 12/12">
+              <input className="input" type="text" value={form.DONNEES_ENVIRONNEMENTALES.photopériode}
                 onChange={(e) => setEnv('photopériode', e.target.value)} />
-            </EnvField>
+            </EF>
           </div>
         </section>
 
-        {/* SECTION: Observations culturales */}
+        {/* Observations */}
         <section className="card">
           <div className="section-title">Observations culturales</div>
           <div className="space-y-4">
             <div>
               <label className="label">Historique des tailles</label>
-              <textarea
-                className="input resize-none"
-                rows={2}
-                placeholder="ex: 2 tailles réalisées — Jour 21 et Jour 28 de floraison"
+              <textarea className="input resize-none" rows={2}
+                placeholder="ex : 2 tailles — Jour 21 et Jour 28 de floraison"
                 value={form.HISTORIQUE_TAILLES}
-                onChange={(e) => setForm((f) => ({ ...f, HISTORIQUE_TAILLES: e.target.value }))}
-              />
+                onChange={(e) => setForm((f) => ({ ...f, HISTORIQUE_TAILLES: e.target.value }))} />
             </div>
             <div>
               <label className="label">Derniers relevés racinaires</label>
-              <textarea
-                className="input resize-none"
-                rows={2}
-                placeholder="ex: densité moyenne, couleur blanc crème, pas de pathogènes visibles"
+              <textarea className="input resize-none" rows={2}
+                placeholder="ex : densité moyenne, couleur blanc crème, pas de pathogènes"
                 value={form.DERNIERS_RELEVES_RACINAIRES}
-                onChange={(e) => setForm((f) => ({ ...f, DERNIERS_RELEVES_RACINAIRES: e.target.value }))}
-              />
+                onChange={(e) => setForm((f) => ({ ...f, DERNIERS_RELEVES_RACINAIRES: e.target.value }))} />
             </div>
             <div>
               <label className="label">Notes additionnelles</label>
-              <textarea
-                className="input resize-none"
-                rows={2}
-                placeholder="Observations libres, traitements en cours, incidents..."
+              <textarea className="input resize-none" rows={2}
+                placeholder="Observations libres, traitements en cours, incidents…"
                 value={form.notes}
-                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-              />
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
           </div>
         </section>
@@ -257,8 +252,8 @@ export default function NewBatchPage() {
           <button type="button" className="btn-secondary" onClick={() => router.push('/')}>
             Annuler
           </button>
-          <button type="submit" className="btn-primary px-6">
-            Enregistrer et analyser →
+          <button type="submit" className="btn-primary px-6" disabled={saving}>
+            {saving ? 'Enregistrement…' : 'Enregistrer et analyser →'}
           </button>
         </div>
       </form>
@@ -266,15 +261,7 @@ export default function NewBatchPage() {
   );
 }
 
-function EnvField({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
+function EF({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="label">

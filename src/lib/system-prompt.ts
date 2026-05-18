@@ -103,7 +103,7 @@ export function formatBatchMessage(data: {
   PHASE_DAY: number;
   MODULE_TYPE: number;
   DATE_SEMIS: string;
-  DONNEES_ENVIRONNEMENTALES: Record<string, number | string>;
+  DONNEES_ENVIRONNEMENTALES: { [key: string]: number | string };
   HISTORIQUE_TAILLES: string;
   DERNIERS_RELEVES_RACINAIRES: string;
   notes?: string;
