@@ -49,8 +49,3 @@ export async function dbDelete(id: string): Promise<void> {
   const db = await getDB();
   await db.delete(STORE, id);
 }
-
-export async function dbGetByStrain(strain: string): Promise<BatchRecord[]> {
-  const all = await dbGetAll();
-  return all.filter((b) => b.data.SOUCHE === strain);
-}

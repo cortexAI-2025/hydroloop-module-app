@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation';
 import { saveBatch, generateBatchId } from '@/lib/storage';
 import type { BatchFormData, PhaseNumber, ModuleType } from '@/types/batch';
 import AlertBadge from '@/components/AlertBadge';
+import EnvFields from '@/components/EnvFields';
+import { rememberOperator, rememberedOperator } from '@/components/BatchActions';
 import { detectAlerts } from '@/types/batch';
 
 const defaultEnv = {
@@ -11,7 +13,7 @@ const defaultEnv = {
   temperature_air_nuit: 18,
   humidite_relative: 55,
   pH: 6.0,
-  EC: 1.8,
+  EC: 1.4,
   temperature_solution: 20,
   debit_NFT: 0.8,
   oxygene_dissous: 7.5,
@@ -30,7 +32,9 @@ export default function NewBatchPage() {
     SOUCHE: '',
     PHASE_NUMBER: 1,
     PHASE_DAY: 1,
-    MODULE_TYPE: 24,
+    MODULE_TYPE: 48,
+    MODULE_ID: '',
+    OPERATEUR: '',
     DATE_SEMIS: new Date().toISOString().slice(0, 10),
     DONNEES_ENVIRONNEMENTALES: defaultEnv,
     HISTORIQUE_TAILLES: '',
@@ -40,6 +44,8 @@ export default function NewBatchPage() {
 
   useEffect(() => {
     generateBatchId().then((id) => setForm((f) => ({ ...f, BATCH_ID: id })));
+    const op = rememberedOperator();
+    if (op) setForm((f) => ({ ...f, OPERATEUR: f.OPERATEUR || op }));
   }, []);
 
   const alerts = detectAlerts(form.DONNEES_ENVIRONNEMENTALES);
@@ -66,7 +72,13 @@ export default function NewBatchPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await saveBatch(form);
+      rememberOperator(form.OPERATEUR ?? '');
+      await saveBatch({
+        ...form,
+        SOUCHE: form.SOUCHE.trim(),
+        MODULE_ID: form.MODULE_ID?.trim() || undefined,
+        OPERATEUR: form.OPERATEUR?.trim() || undefined,
+      });
       router.push(`/batch/${form.BATCH_ID}`);
     } catch {
       setSaving(false);
@@ -79,7 +91,7 @@ export default function NewBatchPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Nouveau batch</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Renseignez les données du batch pour générer le rapport d'analyse A-Frame NFT.
+          Enregistrez la cohorte à son entrée dans le module : le suivi (relevés, changements de niveau, récolte) se fait ensuite depuis la fiche du batch.
         </p>
       </div>
 
@@ -96,7 +108,7 @@ export default function NewBatchPage() {
               <label className="label">Souche *</label>
               <input
                 className="input"
-                placeholder="ex : Amnesia Haze, OG Kush…"
+                placeholder="ex : Beldiya Auto, Auto Sour RNA…"
                 required
                 value={form.SOUCHE}
                 onChange={(e) => setForm((f) => ({ ...f, SOUCHE: e.target.value }))}
@@ -120,19 +132,38 @@ export default function NewBatchPage() {
                 onChange={(e) => setForm((f) => ({ ...f, MODULE_TYPE: Number(e.target.value) as ModuleType }))}
               >
                 {[12, 24, 36, 48].map((n) => (
-                  <option key={n} value={n}>{n} plants</option>
+                  <option key={n} value={n}>{n} plants{n === 48 ? ' (standard)' : ''}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="label">Module A-Frame</label>
+              <input
+                className="input font-mono"
+                placeholder="ex : A-03"
+                value={form.MODULE_ID}
+                onChange={(e) => setForm((f) => ({ ...f, MODULE_ID: e.target.value.toUpperCase() }))}
+              />
+            </div>
+            <div>
+              <label className="label">Responsable du batch</label>
+              <input
+                className="input"
+                placeholder="Nom de l'opérateur"
+                autoComplete="name"
+                value={form.OPERATEUR}
+                onChange={(e) => setForm((f) => ({ ...f, OPERATEUR: e.target.value }))}
+              />
             </div>
           </div>
         </section>
 
         {/* Phase */}
         <section className="card">
-          <div className="section-title">Phase de croissance</div>
+          <div className="section-title">Niveau de départ</div>
           <div className="grid sm:grid-cols-3 gap-3 mb-4">
             {([1, 2, 3] as PhaseNumber[]).map((ph) => {
-              const labels = { 1: 'Phase 1 — Croissance', 2: 'Phase 2 — Stretch', 3: 'Phase 3 — Floraison' };
+              const labels = { 1: 'Niveau 1 — Croissance', 2: 'Niveau 2 — Stretch', 3: 'Niveau 3 — Floraison' };
               const colors = {
                 1: 'border-blue-400 bg-blue-50 text-blue-800',
                 2: 'border-amber-400 bg-amber-50 text-amber-800',
@@ -154,7 +185,7 @@ export default function NewBatchPage() {
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">Jour de phase actuel *</label>
+              <label className="label">Jour dans ce niveau * <span className="text-gray-400 font-normal">(1 pour une entrée aujourd&apos;hui)</span></label>
               <input
                 className="input"
                 type="number"
@@ -170,54 +201,17 @@ export default function NewBatchPage() {
 
         {/* Environnement */}
         <section className="card">
-          <div className="section-title">Données environnementales</div>
+          <div className="section-title">Premier relevé environnemental</div>
           {alerts.length > 0 && (
             <div className="mb-4">
               <AlertBadge alerts={alerts} />
             </div>
           )}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <EF label="Temp. air jour (°C)" hint="Idéal : 22–26°C">
-              <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_air_jour}
-                onChange={(e) => setEnv('temperature_air_jour', Number(e.target.value))} />
-            </EF>
-            <EF label="Temp. air nuit (°C)" hint="Idéal : 16–20°C">
-              <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_air_nuit}
-                onChange={(e) => setEnv('temperature_air_nuit', Number(e.target.value))} />
-            </EF>
-            <EF label="Humidité relative (%)" hint="Idéal : 40–65%">
-              <input className="input" type="number" min={0} max={100} value={form.DONNEES_ENVIRONNEMENTALES.humidite_relative}
-                onChange={(e) => setEnv('humidite_relative', Number(e.target.value))} />
-            </EF>
-            <EF label="pH solution" hint="Plage : 5.5–6.5">
-              <input className="input" type="number" step="0.1" min={4} max={8} value={form.DONNEES_ENVIRONNEMENTALES.pH}
-                onChange={(e) => setEnv('pH', Number(e.target.value))} />
-            </EF>
-            <EF label="EC (mS/cm)" hint="Plage : 0.8–3.0">
-              <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.EC}
-                onChange={(e) => setEnv('EC', Number(e.target.value))} />
-            </EF>
-            <EF label="Temp. solution (°C)" hint="Max : 22°C">
-              <input className="input" type="number" step="0.1" value={form.DONNEES_ENVIRONNEMENTALES.temperature_solution}
-                onChange={(e) => setEnv('temperature_solution', Number(e.target.value))} />
-            </EF>
-            <EF label="Débit NFT (L/min)" hint="Min : 0.5 L/min">
-              <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.debit_NFT}
-                onChange={(e) => setEnv('debit_NFT', Number(e.target.value))} />
-            </EF>
-            <EF label="O₂ dissous (mg/L)" hint="Min : 6 mg/L">
-              <input className="input" type="number" step="0.1" min={0} value={form.DONNEES_ENVIRONNEMENTALES.oxygene_dissous}
-                onChange={(e) => setEnv('oxygene_dissous', Number(e.target.value))} />
-            </EF>
-            <EF label="PPFD (µmol/m²/s)" hint="Ph.3 : 700–1 000">
-              <input className="input" type="number" min={0} value={form.DONNEES_ENVIRONNEMENTALES.PPFD}
-                onChange={(e) => setEnv('PPFD', Number(e.target.value))} />
-            </EF>
-            <EF label="Photopériode (h/h)" hint="ex : 18/6 ou 12/12">
-              <input className="input" type="text" value={form.DONNEES_ENVIRONNEMENTALES.photopériode}
-                onChange={(e) => setEnv('photopériode', e.target.value)} />
-            </EF>
-          </div>
+          <EnvFields
+            value={form.DONNEES_ENVIRONNEMENTALES}
+            phase={form.PHASE_NUMBER}
+            onChange={(k, v) => setEnv(k, v)}
+          />
         </section>
 
         {/* Observations */}
@@ -253,22 +247,10 @@ export default function NewBatchPage() {
             Annuler
           </button>
           <button type="submit" className="btn-primary px-6" disabled={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer et analyser →'}
+            {saving ? 'Enregistrement…' : 'Créer le batch →'}
           </button>
         </div>
       </form>
-    </div>
-  );
-}
-
-function EF({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="label">
-        {label}
-        {hint && <span className="text-gray-400 font-normal ml-1">({hint})</span>}
-      </label>
-      {children}
     </div>
   );
 }

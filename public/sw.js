@@ -1,5 +1,5 @@
-const CACHE = 'hydroloop-v1';
-const PRECACHE = ['/', '/analytics', '/batch/new'];
+const CACHE = 'hydroloop-v2';
+const PRECACHE = ['/', '/analytics', '/batch/new', '/donnees'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -33,8 +33,11 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(e.request)
         .then((res) => {
-          const clone = res.clone();
-          caches.open(CACHE).then((c) => c.put(e.request, clone));
+          // Ne pas mettre en cache les redirections (ex. vers /login) ni les erreurs
+          if (res.ok && !res.redirected) {
+            const clone = res.clone();
+            caches.open(CACHE).then((c) => c.put(e.request, clone));
+          }
           return res;
         })
         .catch(() => caches.match(e.request).then((r) => r || caches.match('/'))),

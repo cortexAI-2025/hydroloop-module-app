@@ -7,10 +7,16 @@ export interface HarvestPrediction {
   trichomeAdvice: string;
 }
 
+/**
+ * Prédit la fenêtre de récolte pour un batch au niveau 3.
+ * `floweringDays` est la durée cible du niveau 3 (rotation HydroLoop : 20–27 j, 27 par défaut) ;
+ * les seuils d'observation sont proportionnels à cette durée.
+ */
 export function predictHarvest(
   phaseNumber: number,
   phaseDay: number,
-  floweringDays = 63,
+  floweringDays = 27,
+  now: Date = new Date(),
 ): HarvestPrediction {
   if (phaseNumber !== 3) {
     return {
@@ -25,19 +31,21 @@ export function predictHarvest(
 
   const remaining = Math.max(0, floweringDays - phaseDay);
   const pct = Math.min(Math.round((phaseDay / floweringDays) * 100), 100);
-  const date = new Date();
+  const date = new Date(now);
   date.setDate(date.getDate() + remaining);
+  const early = Math.round(floweringDays * 0.55);
+  const mid = Math.round(floweringDays * 0.8);
 
   let confidence: HarvestPrediction['confidence'];
   let windowLabel: string;
   let trichomeAdvice: string;
 
-  if (phaseDay < 35) {
+  if (phaseDay < early) {
     confidence = 'low';
     windowLabel = `~${remaining} jours restants`;
     trichomeAdvice =
       'Trichomes en formation. Pistils encore majoritairement blancs — récolte prématurée.';
-  } else if (phaseDay < 50) {
+  } else if (phaseDay < mid) {
     confidence = 'medium';
     windowLabel = `~${remaining} jours restants`;
     trichomeAdvice =

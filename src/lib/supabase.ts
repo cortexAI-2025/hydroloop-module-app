@@ -9,6 +9,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
        id         TEXT PRIMARY KEY,
        data       JSONB        NOT NULL,
        report     TEXT,
+       tracking   JSONB,
        created_at TIMESTAMPTZ  NOT NULL,
        updated_at TIMESTAMPTZ  NOT NULL
      );
