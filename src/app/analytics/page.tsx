@@ -2,9 +2,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getBatches } from '@/lib/storage';
-import { pushAll, pullAll } from '@/lib/sync';
 import { isCloudEnabled } from '@/lib/supabase';
-import type { BatchRecord } from '@/types/batch';
+import type { TrackedBatch } from '@/types/batch';
 import { PHASE_LABELS, detectAlerts } from '@/types/batch';
 
 interface Stats {
@@ -17,9 +16,11 @@ interface Stats {
   alertBreakdown: { label: string; count: number; pct: number }[];
   avgEnv: Record<string, number>;
   timeline: { date: string; count: number }[];
+  readingsCount: number;
+  harvest: { count: number; totalKg: number; avgGPerPlant: number; byStrain: { strain: string; kg: number; gPerPlant: number; n: number }[] };
 }
 
-function compute(batches: BatchRecord[]): Stats {
+function compute(batches: TrackedBatch[]): Stats {
   const total = batches.length;
   const withReport = batches.filter((b) => b.report).length;
 
@@ -55,17 +56,13 @@ function compute(batches: BatchRecord[]): Stats {
     debit_NFT: { label: 'Débit NFT < 0.5 L/min', count: 0 },
   };
 
+  // Un batch compte une fois par type d'alerte rencontré sur l'ensemble de ses relevés
   let alertedBatches = 0;
   for (const b of batches) {
-    const alerts = detectAlerts(b.data.DONNEES_ENVIRONNEMENTALES);
-    if (alerts.length > 0) alertedBatches++;
     const seenFields = new Set<string>();
-    for (const a of alerts) {
-      if (!seenFields.has(a.field) && alertFields[a.field]) {
-        alertFields[a.field].count++;
-        seenFields.add(a.field);
-      }
-    }
+    for (const r of b.readings) for (const a of detectAlerts(r.env)) seenFields.add(a.field);
+    if (seenFields.size > 0) alertedBatches++;
+    for (const f of seenFields) if (alertFields[f]) alertFields[f].count++;
   }
 
   const alertBreakdown = Object.values(alertFields)
@@ -97,9 +94,31 @@ function compute(batches: BatchRecord[]): Stats {
     .slice(-30)
     .map(([date, count]) => ({ date, count }));
 
+  // Récoltes
+  const harvested = batches.filter((b) => b.harvest);
+  const totalKg = harvested.reduce((sum, b) => sum + b.harvest!.freshWeightKg, 0);
+  const totalPlants = harvested.reduce((sum, b) => sum + b.harvest!.plantsHarvested, 0);
+  const strainYield = new Map<string, { kg: number; plants: number; n: number }>();
+  for (const b of harvested) {
+    const y = strainYield.get(b.data.SOUCHE) ?? { kg: 0, plants: 0, n: 0 };
+    y.kg += b.harvest!.freshWeightKg;
+    y.plants += b.harvest!.plantsHarvested;
+    y.n++;
+    strainYield.set(b.data.SOUCHE, y);
+  }
+
   return {
     total,
     withReport,
+    readingsCount: batches.reduce((sum, b) => sum + b.readings.length, 0),
+    harvest: {
+      count: harvested.length,
+      totalKg: Math.round(totalKg * 10) / 10,
+      avgGPerPlant: totalPlants ? Math.round((totalKg * 1000) / totalPlants) : 0,
+      byStrain: [...strainYield.entries()]
+        .map(([strain, y]) => ({ strain, kg: Math.round(y.kg * 10) / 10, gPerPlant: Math.round((y.kg * 1000) / Math.max(1, y.plants)), n: y.n }))
+        .sort((a, b) => b.gPerPlant - a.gPerPlant),
+    },
     alertRate: total > 0 ? Math.round((alertedBatches / total) * 100) : 0,
     strainCounts,
     phaseCounts,
@@ -112,35 +131,12 @@ function compute(batches: BatchRecord[]): Stats {
 
 export default function AnalyticsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState('');
-  const cloudEnabled = isCloudEnabled();
+  const [cloudEnabled, setCloudEnabled] = useState(false);
 
   useEffect(() => {
+    setCloudEnabled(isCloudEnabled());
     getBatches().then((b) => setStats(compute(b)));
   }, []);
-
-  async function handlePushAll() {
-    setSyncing(true);
-    setSyncMsg('');
-    const result = await pushAll();
-    setSyncMsg(
-      result.error
-        ? `Erreur : ${result.error}`
-        : `✅ ${result.pushed} batch${result.pushed > 1 ? 'es' : ''} synchronisé${result.pushed > 1 ? 's' : ''} vers le cloud.`,
-    );
-    setSyncing(false);
-  }
-
-  async function handlePullAll() {
-    setSyncing(true);
-    setSyncMsg('');
-    await pullAll();
-    const b = await getBatches();
-    setStats(compute(b));
-    setSyncMsg('✅ Données synchronisées depuis le cloud.');
-    setSyncing(false);
-  }
 
   if (!stats) return <Loader />;
 
@@ -155,26 +151,37 @@ export default function AnalyticsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Analytiques</h1>
           <p className="text-sm text-gray-500 mt-0.5">Vue globale de la production HydroLoop™</p>
         </div>
-        {cloudEnabled && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {syncMsg && <span className="text-xs text-gray-600">{syncMsg}</span>}
-            <button className="btn-secondary text-xs" onClick={handlePullAll} disabled={syncing}>
-              ↓ Sync cloud → local
-            </button>
-            <button className="btn-primary text-xs" onClick={handlePushAll} disabled={syncing}>
-              ↑ Sync local → cloud
-            </button>
-          </div>
-        )}
+        <Link href="/donnees" className="btn-secondary text-xs">Export & synchronisation →</Link>
       </div>
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
         <StatCard label="Batches total" value={stats.total} icon="🌿" color="text-brand-700" />
-        <StatCard label="Rapports générés" value={`${stats.withReport}/${stats.total}`} icon="📊" color="text-blue-700" />
-        <StatCard label="Taux d'alertes" value={`${stats.alertRate}%`} icon="⚠️" color={stats.alertRate > 50 ? 'text-red-600' : 'text-amber-600'} />
-        <StatCard label="Souches distinctes" value={stats.strainCounts.length} icon="🧬" color="text-purple-700" />
+        <StatCard label="Relevés saisis" value={stats.readingsCount} icon="📈" color="text-blue-700" />
+        <StatCard label="Batches avec alerte" value={`${stats.alertRate}%`} icon="⚠️" color={stats.alertRate > 50 ? 'text-red-600' : 'text-amber-600'} />
+        <StatCard label="Récolté (kg frais)" value={stats.harvest.totalKg} icon="✂" color="text-purple-700" />
       </div>
+
+      {stats.harvest.count > 0 && (
+        <div className="card mb-6">
+          <div className="section-title mb-3">
+            Rendements — {stats.harvest.count} récolte{stats.harvest.count > 1 ? 's' : ''}, moyenne {stats.harvest.avgGPerPlant} g/plante
+          </div>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-gray-500 border-b"><th className="py-1.5">Souche</th><th>Récoltes</th><th>Total (kg)</th><th>g/plante</th></tr></thead>
+            <tbody>
+              {stats.harvest.byStrain.map((y) => (
+                <tr key={y.strain} className="border-b border-gray-50">
+                  <td className="py-1.5">
+                    <Link href={`/batch/compare/${encodeURIComponent(y.strain)}`} className="text-brand-700 hover:underline">{y.strain}</Link>
+                  </td>
+                  <td>{y.n}</td><td>{y.kg}</td><td className="font-semibold">{y.gPerPlant}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         {/* Strain distribution */}
@@ -208,10 +215,10 @@ export default function AnalyticsPage() {
 
         {/* Alert breakdown */}
         <div className="card">
-          <div className="section-title mb-4">Fréquence des alertes</div>
+          <div className="section-title mb-4">Batches touchés par type d&apos;alerte (tous relevés)</div>
           {stats.alertBreakdown.every((a) => a.count === 0) ? (
             <div className="text-center py-8 text-green-600 font-semibold">
-              ✅ Aucune alerte détectée sur l'ensemble des batches
+              ✅ Aucune alerte détectée sur l&apos;ensemble des relevés
             </div>
           ) : (
             <div className="space-y-3">

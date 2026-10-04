@@ -29,6 +29,9 @@ export async function middleware(request: NextRequest) {
     (process.env.NODE_ENV === 'development' ? 'dev-only-secret' : '');
 
   const token = await getToken({ req: request, secret });
+  if (!token && pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Authentification requise.' }, { status: 401 });
+  }
   if (!token) {
     const url = new URL('/login', request.url);
     url.searchParams.set('callbackUrl', pathname);

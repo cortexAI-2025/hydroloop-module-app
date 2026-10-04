@@ -3,6 +3,7 @@ import './globals.css';
 import Navigation from '@/components/Navigation';
 import SessionWrapper from '@/components/SessionWrapper';
 import PwaRegister from '@/components/PwaRegister';
+import { SyncManager } from '@/components/SyncManager';
 
 export const metadata: Metadata = {
   title: 'HydroLoop™ — Farm Manager',
@@ -25,6 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navigation />
           <main className="min-h-screen bg-gray-50">{children}</main>
           <PwaRegister />
+          <SyncManager />
         </SessionWrapper>
       </body>
     </html>

@@ -1,57 +1,100 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { HYDROLOOP_SYSTEM_PROMPT, formatBatchMessage } from '@/lib/system-prompt';
+import { HYDROLOOP_SYSTEM_PROMPT, formatBatchMessage, formatTrackingContext } from '@/lib/system-prompt';
+import type { TrackingContext } from '@/lib/system-prompt';
 import { detectAlerts, PHASE_LABELS } from '@/types/batch';
 import type { BatchFormData, EnvironmentalData } from '@/types/batch';
-import type { StrainHistory } from '@/lib/storage';
 
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300;
 
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 240_000;
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5-5';
+/** Modèles qui acceptent le repli serveur `fallbacks: "default"`. */
+const FALLBACK_MODELS = new Set(['claude-opus-5-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-sonnet-5-5']);
+
+type AnalyzeBody = BatchFormData & { tracking?: TrackingContext };
 
 export async function POST(request: Request) {
-  const body = await request.json();
-  const { strainHistory, ...batchData } = body as BatchFormData & { strainHistory?: StrainHistory };
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return fallback(batchData, 'ANTHROPIC_API_KEY non configurée — ajoutez-la dans .env.local');
+  let body: AnalyzeBody;
+  try {
+    body = (await request.json()) as AnalyzeBody;
+  } catch {
+    return Response.json({ error: 'Corps de requête JSON invalide.' }, { status: 400 });
+  }
+  const { tracking, ...batchData } = body;
+  if (!batchData?.BATCH_ID || !batchData.DONNEES_ENVIRONNEMENTALES || ![1, 2, 3].includes(batchData.PHASE_NUMBER)) {
+    return Response.json({ error: 'Données de batch incomplètes.' }, { status: 400 });
   }
 
-  const systemPrompt = buildSystemPrompt(strainHistory);
-  const userMessage = formatBatchMessage({
-    ...batchData,
-    DONNEES_ENVIRONNEMENTALES: batchData.DONNEES_ENVIRONNEMENTALES as unknown as Record<string, number | string>,
-  });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return fallback(batchData, 'ANTHROPIC_API_KEY non configurée — ajoutez-la dans .env.local', tracking);
+  }
+
+  const userMessage =
+    formatBatchMessage({
+      ...batchData,
+      DONNEES_ENVIRONNEMENTALES: batchData.DONNEES_ENVIRONNEMENTALES as unknown as Record<string, number | string>,
+    }) + formatTrackingContext(tracking);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   try {
-    const stream = await client.messages.create(
+    const stream = client.beta.messages.stream(
       {
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        stream: true,
-        system: systemPrompt,
+        model: MODEL,
+        max_tokens: 16000,
+        output_config: { effort: 'medium' },
+        // Le prompt système est stable : il est mis en cache d'une analyse à l'autre.
+        system: [{ type: 'text', text: HYDROLOOP_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
         messages: [{ role: 'user', content: userMessage }],
+        ...(FALLBACK_MODELS.has(MODEL)
+          ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const }
+          : {}),
       },
       { signal: controller.signal },
     );
 
+    // Attendre le premier événement : une erreur d'authentification ou de requête
+    // remonte ici, avant l'envoi des en-têtes, et bascule sur le rapport de secours.
+    const iterator = stream[Symbol.asyncIterator]();
+    const first = await iterator.next();
+
     const encoder = new TextEncoder();
-    const readable = new ReadableStream({
+    const readable = new ReadableStream<Uint8Array>({
       async start(ctrl) {
+        let wroteText = false;
+        const write = (t: string) => { if (t) { wroteText = true; ctrl.enqueue(encoder.encode(t)); } };
         try {
-          for await (const event of stream) {
-            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-              ctrl.enqueue(encoder.encode(event.delta.text));
-            }
+          let step = first;
+          while (!step.done) {
+            const event = step.value;
+            if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') write(event.delta.text);
+            step = await iterator.next();
           }
+          const final = await stream.finalMessage();
+          if (final.stop_reason === 'refusal') {
+            write(
+              `${wroteText ? '\n\n---\n\n' : ''}> ⚠️ L'analyse IA a été interrompue par le filtre de sécurité du modèle. ` +
+                'Régénérez le rapport ou reformulez les notes du batch.',
+            );
+          } else if (final.stop_reason === 'max_tokens') {
+            write('\n\n> ⚠️ Rapport tronqué (limite de longueur atteinte). Régénérez pour une version complète.');
+          }
+        } catch (err) {
+          const reason = err instanceof Error && err.name === 'AbortError'
+            ? `délai dépassé (${TIMEOUT_MS / 1000}s)`
+            : err instanceof Error ? err.message : String(err);
+          write(`\n\n> ⚠️ Génération interrompue : ${reason}. Régénérez le rapport.`);
         } finally {
           clearTimeout(timer);
           ctrl.close();
         }
+      },
+      cancel() {
+        controller.abort();
+        clearTimeout(timer);
       },
     });
 
@@ -60,47 +103,35 @@ export async function POST(request: Request) {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
         'X-Accel-Buffering': 'no',
+        'X-Report-Source': 'ai',
       },
     });
   } catch (err: unknown) {
     clearTimeout(timer);
-    const isTimeout = err instanceof Error && err.name === 'AbortError';
-    return fallback(
-      batchData,
-      isTimeout
-        ? `Timeout dépassé (${TIMEOUT_MS / 1000}s) — le service IA est surchargé`
-        : String(err),
-    );
+    return fallback(batchData, describeError(err), tracking);
   }
 }
 
-function buildSystemPrompt(history?: StrainHistory): string {
-  if (!history || history.count === 0) return HYDROLOOP_SYSTEM_PROMPT;
-
-  const lines = [
-    '\n\n## HISTORIQUE CONNU DE CETTE SOUCHE DANS LE SYSTÈME',
-    `- Batches précédents enregistrés : **${history.count}**`,
-    history.lastBatchDate
-      ? `- Dernier batch : ${new Date(history.lastBatchDate).toLocaleDateString('fr-FR')}`
-      : null,
-    history.commonAlerts.length > 0
-      ? `- Alertes récurrentes (≥50 % des batches de cette souche) :\n${history.commonAlerts.map((a) => `  • ${a}`).join('\n')}`
-      : null,
-    '\nTiens compte de ces données historiques pour affiner ton analyse et tes recommandations.',
-  ];
-
-  return HYDROLOOP_SYSTEM_PROMPT + lines.filter(Boolean).join('\n');
+function describeError(err: unknown): string {
+  if (err instanceof Error && err.name === 'AbortError') return `Timeout dépassé (${TIMEOUT_MS / 1000}s)`;
+  if (err instanceof Anthropic.AuthenticationError) return 'Clé API Anthropic invalide';
+  if (err instanceof Anthropic.RateLimitError) return 'Limite de requêtes atteinte — réessayez dans un instant';
+  if (err instanceof Anthropic.BadRequestError) return `Requête refusée par l'API : ${err.message}`;
+  if (err instanceof Anthropic.APIConnectionError) return 'Service IA injoignable (connexion)';
+  if (err instanceof Anthropic.APIError) return `Erreur API ${err.status ?? ''} : ${err.message}`;
+  return String(err);
 }
 
 // ─── Deterministic fallback ──────────────────────────────────────────────────
 
-function fallback(data: BatchFormData, reason: string): Response {
-  return new Response(buildFallbackReport(data, reason), {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+function fallback(data: BatchFormData, reason: string, tracking?: TrackingContext): Response {
+  const target = data.PHASE_NUMBER === 3 && tracking?.levelTargetDays ? tracking.levelTargetDays : 27;
+  return new Response(buildFallbackReport(data, reason, target), {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Report-Source': 'fallback' },
   });
 }
 
-function buildFallbackReport(data: BatchFormData, reason: string): string {
+function buildFallbackReport(data: BatchFormData, reason: string, target: number): string {
   const env = data.DONNEES_ENVIRONNEMENTALES as EnvironmentalData;
   const alerts = detectAlerts(env);
   const ph = data.PHASE_NUMBER;
@@ -114,7 +145,7 @@ function buildFallbackReport(data: BatchFormData, reason: string): string {
   const leafCount = ph === 1 ? 38 : ph === 2 ? 72 : 58;
   const hasTrim   = !!data.HISTORIQUE_TAILLES;
   const trimFresh = hasTrim ? (ph === 3 ? 14 : 18) : 0;
-  const progressPct = Math.min(Math.round((day / 63) * 100), 100);
+  const progressPct = Math.min(Math.round((day / target) * 100), 100);
   const flowerFresh = ph === 3 ? Math.round(80 * (progressPct / 100) * 0.8) : 0;
   const flowerDry   = Math.round(flowerFresh * 0.27);
 
@@ -141,14 +172,14 @@ function buildFallbackReport(data: BatchFormData, reason: string): string {
 |---|---|---|
 | Rendement frais estimé | ~${flowerFresh} g/plante | ~${flowerFresh * plants} g |
 | Rendement sec (×0.27) | ~${flowerDry} g/plante | ~${flowerDry * plants} g |
-| Progression floraison | J${day}/63 (${progressPct}%) | — |
+| Progression niveau 3 | J${day}/${target} (${progressPct}%) | — |
 | Grade A (45%) | — | ~${Math.round(flowerDry * plants * 0.45)} g sec |
 | Grade B (35%) | — | ~${Math.round(flowerDry * plants * 0.35)} g sec |
 | Grade C (20%) | — | ~${Math.round(flowerDry * plants * 0.20)} g sec |
 
 **Timing de récolte :**
-${day < 45 ? '- Trichomes en formation. Maintenir programme nutritif standard.' : day < 56 ? '- Observer les trichomes à la loupe ×60. Pistils commençant à rougir.' : '- Surveiller quotidiennement. Fenêtre de récolte imminente. Viser 50–70 % trichomes laiteux + 10–20 % ambrés.'}`
-    : `*Batch en ${phaseLabel} (Jour ${day}). Estimations de rendement disponibles dès la Phase 3.*`;
+${progressPct < 55 ? '- Trichomes en formation. Maintenir programme nutritif standard.' : progressPct < 80 ? '- Observer les trichomes à la loupe ×60. Pistils commençant à rougir.' : '- Surveiller quotidiennement. Fenêtre de récolte imminente. Viser 50–70 % trichomes laiteux + 10–20 % ambrés.'}`
+    : `*Batch en ${phaseLabel} (Jour ${day}). Estimations de rendement disponibles dès le niveau 3.*`;
 
   return `# Rapport Batch ${data.BATCH_ID} — ${data.SOUCHE}
 ## ${phaseLabel} — Jour ${day} · Module ${plants} plants
@@ -185,7 +216,7 @@ ${rootReco}
 |---|---|---|
 | Nombre estimé | ~${leafCount} feuilles/plante | ~${leafCount * plants} |
 | Masse fraîche | ~${leafFresh} g/plante | ~${leafFresh * plants} g |
-| Santé nutritionnelle (EC ${env.EC}) | ${env.EC >= 1.0 && env.EC <= 2.5 ? '✅ Nutrition correcte' : '⚠️ EC hors plage — vérifier carences'} | — |
+| Santé nutritionnelle (EC ${env.EC}) | ${env.EC >= 1.0 && env.EC <= 2.8 ? '✅ Nutrition correcte' : '⚠️ EC hors plage — vérifier carences'} | — |
 
 **Valorisation :**
 - Feuilles saines (~75 %) → extraction de jus, compléments, paillage

@@ -8,6 +8,14 @@ Tu es un système expert de gestion de production agricole, spécialisé dans le
 
 Le système fonctionne en flux continu avec migration progressive des plants entre les niveaux de la structure A-Frame.
 
+## CONTEXTE HYDROLOOP FARM
+- Module A-Frame 2,0 × 2,0 × 1,5 m, 3 niveaux NFT indépendants, chacun avec son propre réservoir, sa pompe et son oxygénation (aucun reflux entre niveaux).
+- Niveau 1 = Phase 1 (gouttière 200 mm, EC cible 1,2–1,6 mS/cm) ; Niveau 2 = Phase 2 (300 mm, EC 1,8–2,2) ; Niveau 3 = Phase 3 (400 mm, EC 2,4–2,8).
+- Rotation : la cohorte monte d'un niveau tous les 20 à 27 jours ; germination J0–J9 hors module, entrée au niveau 1 à J10.
+- Récolte : congélation fresh-frozen à −38/−40 °C, traçabilité par lot (Taqnin ID Batch).
+- Évalue l'EC par rapport à la plage du niveau courant, pas seulement à la plage générale 0,8–3,0.
+- Quand un historique de relevés est fourni, analyse les tendances (dérives de pH, EC, O₂, température) et pas seulement la dernière valeur.
+
 ## OBJECTIF
 Pour chaque batch que je te soumets, tu dois produire une **analyse complète et quantifiée** organisée en quatre volets distincts :
 1. **Racines (Root biomass)**
@@ -137,4 +145,65 @@ HISTORIQUE_TAILLES: ${data.HISTORIQUE_TAILLES || 'Non renseigné'}
 DERNIERS_RELEVES_RACINAIRES: ${data.DERNIERS_RELEVES_RACINAIRES || 'Non renseigné'}${data.notes ? `\nNOTES_ADDITIONNELLES: ${data.notes}` : ''}
 
 Génère le rapport complet avec les 4 sections (Racines, Feuilles, Trims, Fleurs) selon le format demandé.`;
+}
+
+export interface TrackingContext {
+  levelTargetDays?: number;
+  daysSinceSowing?: number;
+  readingsCount?: number;
+  alertRatePct?: number;
+  trend?: Record<string, { min: number; max: number; avg: number; first: number; last: number; count: number }>;
+  recentEvents?: string[];
+  strainHistory?: {
+    count: number;
+    commonAlerts: string[];
+    lastBatchDate: string | null;
+    harvests?: { batchId: string; freshWeightKg: number; plants: number }[];
+  };
+}
+
+const TREND_LABELS: Record<string, string> = {
+  pH: 'pH',
+  EC: 'EC (mS/cm)',
+  oxygene_dissous: 'O₂ dissous (mg/L)',
+  temperature_solution: 'T° solution (°C)',
+  temperature_air_jour: 'T° air jour (°C)',
+  humidite_relative: 'Humidité (%)',
+  debit_NFT: 'Débit NFT (L/min)',
+  PPFD: 'PPFD',
+};
+
+/** Contexte de suivi ajouté au message utilisateur (le prompt système reste stable pour le cache). */
+export function formatTrackingContext(t?: TrackingContext): string {
+  if (!t) return '';
+  const lines: string[] = ['', '', 'SUIVI_DE_CULTURE:'];
+  if (t.daysSinceSowing !== undefined) lines.push(`· Jours depuis le semis : ${t.daysSinceSowing}`);
+  if (t.levelTargetDays !== undefined) lines.push(`· Durée cible du niveau actuel : ${t.levelTargetDays} jours`);
+  if (t.readingsCount !== undefined)
+    lines.push(`· Relevés enregistrés : ${t.readingsCount}${t.alertRatePct !== undefined ? ` (${t.alertRatePct} % avec alerte)` : ''}`);
+  if (t.trend && t.readingsCount && t.readingsCount > 1) {
+    lines.push('· Tendances (premier → dernier, min–max, moyenne) :');
+    for (const [k, v] of Object.entries(t.trend)) {
+      if (!TREND_LABELS[k]) continue;
+      lines.push(`  - ${TREND_LABELS[k]} : ${v.first} → ${v.last} (min ${v.min}, max ${v.max}, moy. ${v.avg})`);
+    }
+  }
+  if (t.recentEvents?.length) {
+    lines.push('· Derniers événements :');
+    for (const e of t.recentEvents) lines.push(`  - ${e}`);
+  }
+  const h = t.strainHistory;
+  if (h && h.count > 0) {
+    lines.push('', 'HISTORIQUE_DE_LA_SOUCHE:');
+    lines.push(`· Batches précédents : ${h.count}`);
+    if (h.lastBatchDate) lines.push(`· Dernier batch : ${new Date(h.lastBatchDate).toLocaleDateString('fr-FR')}`);
+    if (h.commonAlerts.length)
+      lines.push(`· Alertes récurrentes (≥ 50 % des batches) :\n${h.commonAlerts.map((a) => `  - ${a}`).join('\n')}`);
+    if (h.harvests?.length)
+      lines.push(
+        `· Récoltes précédentes : ${h.harvests.map((x) => `${x.batchId} ${x.freshWeightKg} kg / ${x.plants} plants`).join(' ; ')}`,
+      );
+    lines.push('Tiens compte de cet historique pour affiner l\'analyse et le benchmark de la souche.');
+  }
+  return lines.length > 3 ? lines.join('\n') : '';
 }

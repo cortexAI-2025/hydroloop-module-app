@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const QRCodeSVG = dynamic(
@@ -15,6 +15,27 @@ export default function QRModal({ batchId }: Props) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const qrRef = useRef<HTMLDivElement>(null);
+
+  function printLabel() {
+    const svg = qrRef.current?.innerHTML;
+    const w = window.open('', '_blank', 'width=420,height=520');
+    if (!svg || !w) return;
+    const doc = w.document;
+    doc.title = `Étiquette ${batchId}`;
+    doc.body.style.cssText = 'font-family:system-ui,sans-serif;text-align:center;padding:24px';
+    const box = doc.createElement('div');
+    box.innerHTML = svg;
+    const id = doc.createElement('div');
+    id.textContent = batchId;
+    id.style.cssText = 'font:600 18px ui-monospace,monospace;margin-top:12px';
+    const brand = doc.createElement('div');
+    brand.textContent = 'HydroLoop™ Farm — scanner pour le suivi';
+    brand.style.cssText = 'font-size:12px;color:#555;margin-top:4px';
+    doc.body.append(box, id, brand);
+    w.focus();
+    w.print();
+  }
 
   useEffect(() => {
     if (open) setUrl(`${window.location.origin}/batch/${batchId}`);
@@ -40,10 +61,10 @@ export default function QRModal({ batchId }: Props) {
         >
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-72 text-center">
             <div className="text-sm font-bold text-gray-700 mb-1">Batch {batchId}</div>
-            <div className="text-xs text-gray-400 mb-4">Scanner pour accès mobile direct</div>
+            <div className="text-xs text-gray-400 mb-4">À coller sur le module : le scan ouvre la fiche de suivi</div>
 
-            <div className="flex justify-center mb-4 p-3 bg-white rounded-xl border border-gray-100 shadow-inner">
-              <QRCodeSVG value={url || `https://hydroloop.app/batch/${batchId}`} size={180} level="M" />
+            <div ref={qrRef} className="flex justify-center mb-4 p-3 bg-white rounded-xl border border-gray-100 shadow-inner">
+              {url ? <QRCodeSVG value={url} size={180} level="M" /> : <div className="w-[180px] h-[180px]" />}
             </div>
 
             <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-4">
@@ -56,6 +77,9 @@ export default function QRModal({ batchId }: Props) {
               </button>
             </div>
 
+            <button className="btn-secondary w-full justify-center text-sm mb-2" onClick={printLabel}>
+              🖨 Imprimer l&apos;étiquette
+            </button>
             <button
               className="btn-secondary w-full justify-center text-sm"
               onClick={() => setOpen(false)}
