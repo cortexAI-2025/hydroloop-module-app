@@ -8,6 +8,11 @@ import { PHASE_LABELS, PHASE_COLORS, detectAlerts } from '@/types/batch';
 import { predictHarvest, fmtHarvestDate } from '@/lib/harvest';
 import AlertBadge from '@/components/AlertBadge';
 import QRModal from '@/components/QRModal';
+import WaterJournal from '@/components/WaterJournal';
+import HarvestForm from '@/components/HarvestForm';
+import type { Variety } from '@/types/variety';
+import { getVariety } from '@/lib/catalog';
+import { computeCycle, validateCycle } from '@/lib/cycle';
 import dynamic from 'next/dynamic';
 
 const MarkdownRenderer = dynamic(() => import('@/components/MarkdownRenderer'), { ssr: false });
@@ -23,6 +28,13 @@ export default function BatchReportPage() {
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [isFallback, setIsFallback] = useState(false);
+  const [variety, setVariety] = useState<Variety | undefined>();
+
+  useEffect(() => {
+    const vid = record?.data.VARIETY_ID;
+    if (!vid) { setVariety(undefined); return; }
+    getVariety(vid).then(setVariety).catch(() => setVariety(undefined));
+  }, [record?.data.VARIETY_ID]);
 
   useEffect(() => {
     getBatch(id).then((r) => {
@@ -86,9 +98,12 @@ export default function BatchReportPage() {
   if (!record) return <Loader />;
 
   const { data } = record;
-  const alerts = detectAlerts(data.DONNEES_ENVIRONNEMENTALES);
+  const alerts = detectAlerts(data.DONNEES_ENVIRONNEMENTALES, data.PHASE_NUMBER);
   const env = data.DONNEES_ENVIRONNEMENTALES;
-  const harvest = predictHarvest(data.PHASE_NUMBER, data.PHASE_DAY);
+  // Durée de floraison = phase de la variété ; 63 j pour les anciens lots sans variété.
+  const floweringDays =
+    variety && validateCycle(variety) === null ? computeCycle(variety).phaseDays : (data.FLOWERING_DAYS ?? 63);
+  const harvest = predictHarvest(data.PHASE_NUMBER, data.PHASE_DAY, floweringDays);
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8 print:py-2 print:max-w-none">
@@ -155,7 +170,12 @@ export default function BatchReportPage() {
 
       {/* Harvest prediction widget (Phase 3 only) */}
       {data.PHASE_NUMBER === 3 && (
-        <HarvestWidget harvest={harvest} phaseDay={data.PHASE_DAY} />
+        <HarvestWidget harvest={harvest} phaseDay={data.PHASE_DAY} floweringDays={floweringDays} />
+      )}
+
+      <WaterJournal record={record} onChange={setRecord} />
+      {data.PHASE_NUMBER === 3 && (
+        <HarvestForm record={record} onChange={setRecord} defaultPlants={Math.round(data.MODULE_TYPE / 3)} />
       )}
 
       {/* Report card */}
@@ -219,9 +239,10 @@ export default function BatchReportPage() {
   );
 }
 
-function HarvestWidget({ harvest, phaseDay }: {
+function HarvestWidget({ harvest, phaseDay, floweringDays }: {
   harvest: ReturnType<typeof predictHarvest>;
   phaseDay: number;
+  floweringDays: number;
 }) {
   const confColor = { high: 'text-brand-700', medium: 'text-amber-600', low: 'text-gray-500' };
   const barColor = harvest.progressPct >= 90 ? 'bg-purple-500' : harvest.progressPct >= 70 ? 'bg-amber-500' : 'bg-brand-500';
@@ -239,7 +260,7 @@ function HarvestWidget({ harvest, phaseDay }: {
       <div className="mb-3">
         <div className="flex justify-between text-xs text-gray-500 mb-1">
           <span>Progression floraison</span>
-          <span>J{phaseDay} / 63 jours cible ({harvest.progressPct}%)</span>
+          <span>J{phaseDay} / {Number.isInteger(floweringDays) ? floweringDays : floweringDays.toFixed(1)} jours cible ({harvest.progressPct}%)</span>
         </div>
         <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
           <div

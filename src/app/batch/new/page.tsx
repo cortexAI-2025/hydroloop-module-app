@@ -5,6 +5,11 @@ import { saveBatch, generateBatchId } from '@/lib/storage';
 import type { BatchFormData, PhaseNumber, ModuleType } from '@/types/batch';
 import AlertBadge from '@/components/AlertBadge';
 import { detectAlerts } from '@/types/batch';
+import type { Variety } from '@/types/variety';
+import type { ModuleRecord } from '@/types/module';
+import { MODULE_KINDS } from '@/types/module';
+import { computeCycle, stageAt, elapsedDaysSince, harvestDate, validateCycle } from '@/lib/cycle';
+import { getVarieties, getModules } from '@/lib/catalog';
 
 const defaultEnv = {
   temperature_air_jour: 24,
@@ -38,11 +43,51 @@ export default function NewBatchPage() {
     notes: '',
   });
 
+  const [varieties, setVarieties] = useState<Variety[]>([]);
+  const [modules, setModules] = useState<ModuleRecord[]>([]);
+
   useEffect(() => {
     generateBatchId().then((id) => setForm((f) => ({ ...f, BATCH_ID: id })));
+    getVarieties().then(setVarieties).catch(() => {});
+    getModules().then(setModules).catch(() => {});
   }, []);
 
-  const alerts = detectAlerts(form.DONNEES_ENVIRONNEMENTALES);
+  const variety = varieties.find((v) => v.id === form.VARIETY_ID);
+  const cycleOk = variety ? validateCycle(variety) === null : false;
+  const plan = variety && cycleOk ? computeCycle(variety) : null;
+  const position = variety && cycleOk ? stageAt(variety, elapsedDaysSince(form.DATE_SEMIS)) : null;
+
+  // Variété choisie : la phase et le jour de phase se déduisent de la date de semis.
+  useEffect(() => {
+    if (!variety || !cycleOk) return;
+    const pos = stageAt(variety, elapsedDaysSince(form.DATE_SEMIS));
+    if (pos.stage === 'nursery' || pos.stage === 'done') return;
+    setForm((f) => ({
+      ...f,
+      PHASE_NUMBER: pos.stage as PhaseNumber,
+      PHASE_DAY: pos.phaseDay,
+      DONNEES_ENVIRONNEMENTALES: { ...f.DONNEES_ENVIRONNEMENTALES, photopériode: phasePhotopériode[pos.stage as number] },
+    }));
+  }, [variety, cycleOk, form.DATE_SEMIS]);
+
+  function onVarietyChange(id: string) {
+    const v = varieties.find((x) => x.id === id);
+    setForm((f) => ({ ...f, VARIETY_ID: id || undefined, SOUCHE: v ? v.name : f.SOUCHE }));
+  }
+
+  function onModuleChange(id: string) {
+    const m = modules.find((x) => x.id === id);
+    const v = m?.varietyId ? varieties.find((x) => x.id === m.varietyId) : undefined;
+    setForm((f) => ({
+      ...f,
+      MODULE_ID: id || undefined,
+      MODULE_TYPE: m ? (MODULE_KINDS[m.kind].plants as ModuleType) : f.MODULE_TYPE,
+      VARIETY_ID: v ? v.id : f.VARIETY_ID,
+      SOUCHE: v ? v.name : f.SOUCHE,
+    }));
+  }
+
+  const alerts = detectAlerts(form.DONNEES_ENVIRONNEMENTALES, form.PHASE_NUMBER);
 
   function setEnv(field: string, value: number | string) {
     setForm((f) => ({
@@ -66,7 +111,13 @@ export default function NewBatchPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await saveBatch(form);
+      await saveBatch({
+        ...form,
+        LEVEL: form.PHASE_NUMBER,
+        ...(variety && plan
+          ? { CYCLE: { nurseryDays: variety.nurseryDays, totalDays: variety.totalDays }, FLOWERING_DAYS: plan.phaseDays }
+          : {}),
+      });
       router.push(`/batch/${form.BATCH_ID}`);
     } catch {
       setSaving(false);
@@ -91,6 +142,20 @@ export default function NewBatchPage() {
             <div>
               <label className="label">Batch ID (auto-généré)</label>
               <input className="input bg-gray-50 font-mono" value={form.BATCH_ID} readOnly />
+            </div>
+            <div>
+              <label className="label">Module</label>
+              <select className="input" value={form.MODULE_ID ?? ''} onChange={(e) => onModuleChange(e.target.value)}>
+                <option value="">— non rattaché —</option>
+                {modules.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Variété du catalogue</label>
+              <select className="input" value={form.VARIETY_ID ?? ''} onChange={(e) => onVarietyChange(e.target.value)}>
+                <option value="">— saisie libre —</option>
+                {varieties.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
             </div>
             <div>
               <label className="label">Souche *</label>
@@ -125,6 +190,15 @@ export default function NewBatchPage() {
               </select>
             </div>
           </div>
+          {plan && variety && position && (
+            <p className="mt-3 rounded-md bg-brand-50 px-3 py-2 text-xs text-brand-800">
+              Cycle {variety.totalDays} j : nurserie {plan.nurseryDays} j, puis 3 phases de {plan.phaseDays.toFixed(1)} j.
+              Intégration au module le {new Date(form.DATE_SEMIS + 'T00:00:00').toLocaleDateString('fr-FR')} + {plan.nurseryDays} j (J+{plan.integrationDay}).
+              Récolte prévue le {new Date(harvestDate(form.DATE_SEMIS, variety) + 'T00:00:00').toLocaleDateString('fr-FR')}.
+              {position.stage === 'nursery' && ` Actuellement en nurserie (jour ${position.phaseDay}/${plan.nurseryDays}).`}
+              {position.stage === 'done' && ' Le cycle est terminé à cette date.'}
+            </p>
+          )}
         </section>
 
         {/* Phase */}

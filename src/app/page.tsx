@@ -90,7 +90,7 @@ function BatchCard({
   onDelete: (id: string) => void;
 }) {
   const { data } = record;
-  const alerts = detectAlerts(data.DONNEES_ENVIRONNEMENTALES);
+  const alerts = detectAlerts(data.DONNEES_ENVIRONNEMENTALES, data.PHASE_NUMBER);
   const phase = data.PHASE_NUMBER;
   const env = data.DONNEES_ENVIRONNEMENTALES;
 

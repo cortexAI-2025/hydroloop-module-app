@@ -57,7 +57,7 @@ function compute(batches: BatchRecord[]): Stats {
 
   let alertedBatches = 0;
   for (const b of batches) {
-    const alerts = detectAlerts(b.data.DONNEES_ENVIRONNEMENTALES);
+    const alerts = detectAlerts(b.data.DONNEES_ENVIRONNEMENTALES, b.data.PHASE_NUMBER);
     if (alerts.length > 0) alertedBatches++;
     const seenFields = new Set<string>();
     for (const a of alerts) {

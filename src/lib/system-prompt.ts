@@ -107,6 +107,8 @@ export function formatBatchMessage(data: {
   HISTORIQUE_TAILLES: string;
   DERNIERS_RELEVES_RACINAIRES: string;
   notes?: string;
+  CYCLE?: { nurseryDays: number; totalDays: number };
+  FLOWERING_DAYS?: number;
 }): string {
   const phaseNames: Record<number, string> = {
     1: 'Phase 1 - Croissance',
@@ -121,7 +123,7 @@ SOUCHE: ${data.SOUCHE}
 PHASE_ACTUELLE: ${phaseNames[data.PHASE_NUMBER]} (Jour ${data.PHASE_DAY})
 MODULE_TYPE: ${data.MODULE_TYPE} plants
 DATE_SEMIS: ${data.DATE_SEMIS}
-
+${data.CYCLE ? `CYCLE_VARIETE: nurserie ${data.CYCLE.nurseryDays} j, total ${data.CYCLE.totalDays} j, phases de ${data.FLOWERING_DAYS ?? '?'} j (durée de floraison cible : ${data.FLOWERING_DAYS ?? '?'} j)\n` : ''}
 DONNEES_ENVIRONNEMENTALES:
 · Température air (°C) : ${env.temperature_air_jour} (jour) / ${env.temperature_air_nuit} (nuit)
 · Humidité relative (%) : ${env.humidite_relative}

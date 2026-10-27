@@ -102,7 +102,7 @@ function fallback(data: BatchFormData, reason: string): Response {
 
 function buildFallbackReport(data: BatchFormData, reason: string): string {
   const env = data.DONNEES_ENVIRONNEMENTALES as EnvironmentalData;
-  const alerts = detectAlerts(env);
+  const alerts = detectAlerts(env, data.PHASE_NUMBER);
   const ph = data.PHASE_NUMBER;
   const day = data.PHASE_DAY;
   const plants = data.MODULE_TYPE;
@@ -114,7 +114,7 @@ function buildFallbackReport(data: BatchFormData, reason: string): string {
   const leafCount = ph === 1 ? 38 : ph === 2 ? 72 : 58;
   const hasTrim   = !!data.HISTORIQUE_TAILLES;
   const trimFresh = hasTrim ? (ph === 3 ? 14 : 18) : 0;
-  const progressPct = Math.min(Math.round((day / 63) * 100), 100);
+  const progressPct = Math.min(Math.round((day / (data.FLOWERING_DAYS ?? 63)) * 100), 100);
   const flowerFresh = ph === 3 ? Math.round(80 * (progressPct / 100) * 0.8) : 0;
   const flowerDry   = Math.round(flowerFresh * 0.27);
 

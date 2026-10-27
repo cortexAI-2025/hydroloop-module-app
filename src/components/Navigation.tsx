@@ -11,6 +11,8 @@ export default function Navigation() {
 
   const links = [
     { href: '/', label: 'Tableau de bord' },
+    { href: '/modules', label: 'Modules' },
+    { href: '/varieties', label: 'Variétés' },
     { href: '/analytics', label: 'Analytiques' },
     { href: '/batch/new', label: '+ Nouveau Batch' },
   ];

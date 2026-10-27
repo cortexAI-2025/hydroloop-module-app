@@ -7,6 +7,10 @@ export interface HarvestPrediction {
   trichomeAdvice: string;
 }
 
+/**
+ * @param floweringDays durée de la phase 3 de la variété ((T − nurserie) / 3) ; 63 par défaut
+ *                      pour les lots historiques sans variété.
+ */
 export function predictHarvest(
   phaseNumber: number,
   phaseDay: number,
@@ -32,17 +36,22 @@ export function predictHarvest(
   let windowLabel: string;
   let trichomeAdvice: string;
 
-  if (phaseDay < 35) {
+  // Seuils proportionnels à la durée de floraison de la variété (63 j → 35 / 50 / 7 j).
+  const earlyUntil = floweringDays * 0.55;
+  const midUntil = floweringDays * 0.8;
+  const imminentDays = Math.max(2, Math.round(floweringDays * 0.11));
+
+  if (phaseDay < earlyUntil) {
     confidence = 'low';
     windowLabel = `~${remaining} jours restants`;
     trichomeAdvice =
       'Trichomes en formation. Pistils encore majoritairement blancs — récolte prématurée.';
-  } else if (phaseDay < 50) {
+  } else if (phaseDay < midUntil) {
     confidence = 'medium';
     windowLabel = `~${remaining} jours restants`;
     trichomeAdvice =
       'Observer à la loupe ×60. Viser 20–30 % ambrés pour récolte précoce (effet énergisant).';
-  } else if (remaining > 7) {
+  } else if (remaining > imminentDays) {
     confidence = 'high';
     windowLabel = `~${remaining} jours restants`;
     trichomeAdvice =

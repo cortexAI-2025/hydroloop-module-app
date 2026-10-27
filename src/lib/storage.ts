@@ -56,6 +56,16 @@ export async function updateReport(id: string, report: string): Promise<void> {
   }
 }
 
+/** Met à jour une partie des données d'un lot (journal d'eau, récolte, niveau…). */
+export async function patchBatchData(id: string, patch: Partial<BatchFormData>): Promise<BatchRecord | undefined> {
+  const record = await dbGet(id);
+  if (!record) return undefined;
+  const updated: BatchRecord = { ...record, data: { ...record.data, ...patch }, updatedAt: new Date().toISOString() };
+  await dbPut(updated);
+  void pushBatch(updated);
+  return updated;
+}
+
 export async function deleteBatch(id: string): Promise<void> {
   await dbDelete(id);
 }
@@ -84,7 +94,7 @@ export async function getStrainHistory(
 
   const alertCounts: Record<string, number> = {};
   for (const b of batches) {
-    const alerts = detectAlerts(b.data.DONNEES_ENVIRONNEMENTALES);
+    const alerts = detectAlerts(b.data.DONNEES_ENVIRONNEMENTALES, b.data.PHASE_NUMBER);
     for (const a of alerts) {
       alertCounts[a.message] = (alertCounts[a.message] || 0) + 1;
     }
