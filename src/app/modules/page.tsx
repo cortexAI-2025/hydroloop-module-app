@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { ModuleRecord, ModuleKindId } from '@/types/module';
-import { MODULE_KINDS } from '@/types/module';
+import { MODULE_KINDS, TUNNEL_PLANTS_PER_LEVEL, DEFAULT_LEVELS, moduleSpec } from '@/types/module';
+
 import type { Variety } from '@/types/variety';
 import type { BatchRecord } from '@/types/batch';
 import { computeCycle } from '@/lib/cycle';
@@ -16,6 +17,8 @@ export default function ModulesPage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<ModuleKindId>('dome-36');
   const [varietyId, setVarietyId] = useState('');
+  const [perLevel, setPerLevel] = useState<number>(TUNNEL_PLANTS_PER_LEVEL[0]);
+  const [levels, setLevels] = useState<number>(DEFAULT_LEVELS);
 
   const load = useCallback(async () => {
     const [m, v, b] = await Promise.all([getModules(), getVarieties(), getBatches()]);
@@ -26,7 +29,10 @@ export default function ModulesPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    await addModule({ name: name.trim(), kind, varietyId: varietyId || undefined });
+    await addModule({
+      name: name.trim(), kind, varietyId: varietyId || undefined,
+      ...(kind === 'tunnel' ? { plantsPerLevel: perLevel, levels } : {}),
+    });
     setName(''); setVarietyId('');
     await load();
   }
@@ -51,6 +57,17 @@ export default function ModulesPage() {
               <option value="">— aucune —</option>
               {varieties.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select></div>
+          {kind === 'tunnel' && (
+            <>
+              <div><label className="label">Plants par niveau</label>
+                <select className="input" value={perLevel} onChange={(e) => setPerLevel(Number(e.target.value))}>
+                  {TUNNEL_PLANTS_PER_LEVEL.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select></div>
+              <div><label className="label">Niveaux</label>
+                <input className="input" inputMode="numeric" value={levels}
+                  onChange={(e) => setLevels(Math.max(1, Math.floor(Number(e.target.value)) || 1))} /></div>
+            </>
+          )}
           <div className="flex items-end"><button className="btn-primary w-full justify-center" type="submit">Créer</button></div>
         </form>
       </section>
@@ -60,7 +77,7 @@ export default function ModulesPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {modules.map((m) => {
-            const k = MODULE_KINDS[m.kind];
+            const k = moduleSpec(m);
             const v = varieties.find((x) => x.id === m.varietyId);
             const plan = v ? computeCycle(v) : null;
             const mine = batches.filter((b) => b.data.MODULE_ID === m.id);

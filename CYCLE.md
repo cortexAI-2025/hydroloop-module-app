@@ -4,7 +4,7 @@
 - Les phases N1 croissance, N2 stretch, N3 floraison durent chacune **(T − n) / 3** jours.
 - La nurserie tourne en parallèle de la cohorte précédente ; intégration au module au jour n + 1 (J+13 pour n = 12).
 - En régime établi : une récolte tous les (T − n) / 3 jours, soit 365 / ((T − n) / 3) récoltes par an.
-- Un module = une seule variété. Dôme 36 : 3 niveaux × 12 plants ; la cohorte descend N1 → N2 → N3.
+- Un module = une seule variété. Dôme annulaire 36 : 3 niveaux × 12 plants ; module horizontal en serre tunnel : 12, 16, 24 ou 32 plants par niveau (3 niveaux par défaut, modifiable). La cohorte descend N1 → N2 → N3.
 - EC cible par stade : N1 1,2–1,6 · N2 1,8–2,2 · N3 2,4–2,8 mS/cm.
 - Catalogue : aucune variété commerciale n'est préchargée. Importer un CSV depuis /varieties
   (colonnes `name;breeder;nursery_days;total_days;height_min_cm;height_max_cm;thc_pct;cbd_pct;status;source;notes`).

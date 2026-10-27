@@ -1,5 +1,6 @@
 export type PhaseNumber = 1 | 2 | 3;
-export type ModuleType = 12 | 24 | 36 | 48;
+/** Nombre total de plants du module (12, 24, 36, 48, 72, 96…). */
+export type ModuleType = number;
 
 export const PHASE_LABELS: Record<PhaseNumber, string> = {
   1: 'Croissance',

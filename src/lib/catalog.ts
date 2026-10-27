@@ -61,7 +61,7 @@ export async function getModules(): Promise<ModuleRecord[]> {
   return (await dbGetAllModules()).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
-export async function addModule(input: { name: string; kind: ModuleKindId; varietyId?: string; location?: string; notes?: string }): Promise<ModuleRecord> {
+export async function addModule(input: { name: string; kind: ModuleKindId; varietyId?: string; plantsPerLevel?: number; levels?: number; location?: string; notes?: string }): Promise<ModuleRecord> {
   const now = new Date().toISOString();
   const m: ModuleRecord = { ...input, id: newId('mod'), createdAt: now, updatedAt: now };
   await dbPutModule(m);

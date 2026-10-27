@@ -7,7 +7,8 @@ import AlertBadge from '@/components/AlertBadge';
 import { detectAlerts } from '@/types/batch';
 import type { Variety } from '@/types/variety';
 import type { ModuleRecord } from '@/types/module';
-import { MODULE_KINDS } from '@/types/module';
+import { moduleSpec } from '@/types/module';
+
 import { computeCycle, stageAt, elapsedDaysSince, harvestDate, validateCycle } from '@/lib/cycle';
 import { getVarieties, getModules } from '@/lib/catalog';
 
@@ -81,7 +82,7 @@ export default function NewBatchPage() {
     setForm((f) => ({
       ...f,
       MODULE_ID: id || undefined,
-      MODULE_TYPE: m ? (MODULE_KINDS[m.kind].plants as ModuleType) : f.MODULE_TYPE,
+      MODULE_TYPE: m ? moduleSpec(m).plants : f.MODULE_TYPE,
       VARIETY_ID: v ? v.id : f.VARIETY_ID,
       SOUCHE: v ? v.name : f.SOUCHE,
     }));
@@ -184,7 +185,7 @@ export default function NewBatchPage() {
                 value={form.MODULE_TYPE}
                 onChange={(e) => setForm((f) => ({ ...f, MODULE_TYPE: Number(e.target.value) as ModuleType }))}
               >
-                {[12, 24, 36, 48].map((n) => (
+                {Array.from(new Set([12, 24, 36, 48, 72, 96, form.MODULE_TYPE])).sort((x, y) => x - y).map((n) => (
                   <option key={n} value={n}>{n} plants</option>
                 ))}
               </select>
