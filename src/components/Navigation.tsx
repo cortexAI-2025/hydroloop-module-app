@@ -22,7 +22,7 @@ export default function Navigation() {
     <nav className="sticky top-0 z-40 bg-brand-800 shadow-md print:hidden">
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between gap-2">
-          <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="HydroLoop — tableau de bord">
+          <Link href="/" className="flex items-center gap-2 shrink-0 min-h-10" aria-label="HydroLoop™ tableau de bord">
             <LeafIcon />
             <span className="text-white font-bold text-lg tracking-tight hidden min-[400px]:inline">
               HydroLoop<sup className="text-xs font-normal">™</sup>
@@ -37,8 +37,8 @@ export default function Navigation() {
                   key={l.href}
                   href={l.href}
                   aria-current={on ? 'page' : undefined}
-                  className={`px-2 sm:px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap
-                    ${on ? 'bg-brand-600 text-white' : 'text-brand-100 hover:bg-brand-700 hover:text-white'}`}
+                  className={`inline-flex items-center min-h-10 px-2 sm:px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap
+                    ${on ? 'bg-brand-900 text-white' : 'text-brand-100 hover:bg-brand-700 hover:text-white'}`}
                 >
                   <span className="hidden md:inline">{l.label}</span>
                   <span className="md:hidden">{l.short}</span>

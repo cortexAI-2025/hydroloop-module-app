@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { getBatches } from '@/lib/storage';
 import { DATA_CHANGED_EVENT } from '@/lib/events';
 
@@ -16,10 +17,16 @@ export default function PwaRegister() {
   const [installEvt, setInstallEvt] = useState<InstallEvent | null>(null);
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
 
-  const warm = useCallback(async () => {
+  const pathname = usePathname();
+  const lastWarm = useRef(0);
+
+  const warm = useCallback(async (force = false) => {
+    // Au plus un préchauffage toutes les 2 minutes, sauf demande explicite (connexion, retour du réseau).
+    if (!force && Date.now() - lastWarm.current < 120_000) return;
     const reg = await navigator.serviceWorker?.getRegistration();
     const sw = reg?.active;
-    if (!sw || !navigator.onLine) return;
+    if (!sw || !navigator.onLine || location.pathname === '/login') return;
+    lastWarm.current = Date.now();
     try {
       const ids = (await getBatches()).filter((b) => b.status === 'active').slice(0, 40).map((b) => `/batch/${encodeURIComponent(b.id)}`);
       sw.postMessage({ type: 'WARM', urls: [...CORE_PAGES, ...ids] });
@@ -28,13 +35,14 @@ export default function PwaRegister() {
 
   useEffect(() => {
     setOnline(navigator.onLine);
-    const on = () => { setOnline(true); void warm(); };
+    const on = () => { setOnline(true); void warm(true); };
     const off = () => setOnline(false);
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
     const onPrompt = (e: Event) => { e.preventDefault(); setInstallEvt(e as InstallEvent); };
     window.addEventListener('beforeinstallprompt', onPrompt);
-    window.addEventListener(DATA_CHANGED_EVENT, warm);
+    const onData = () => { void warm(); };
+    window.addEventListener(DATA_CHANGED_EVENT, onData);
 
     if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker.register('/sw.js').then((reg) => {
@@ -45,7 +53,7 @@ export default function PwaRegister() {
             if (nw.state === 'installed' && navigator.serviceWorker.controller) setWaiting(nw);
           });
         });
-        void navigator.serviceWorker.ready.then(warm);
+        void navigator.serviceWorker.ready.then(() => warm(true));
       }).catch(() => { /* enregistrement facultatif */ });
       let reloaded = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
@@ -54,9 +62,12 @@ export default function PwaRegister() {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
       window.removeEventListener('beforeinstallprompt', onPrompt);
-      window.removeEventListener(DATA_CHANGED_EVENT, warm);
+      window.removeEventListener(DATA_CHANGED_EVENT, onData);
     };
   }, [warm]);
+
+  // Après la connexion (ou toute navigation), prépare les pages pour le hors ligne.
+  useEffect(() => { if (pathname !== '/login') void warm(lastWarm.current === 0); }, [pathname, warm]);
 
   return (
     <>

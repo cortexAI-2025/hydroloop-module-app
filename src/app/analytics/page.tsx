@@ -217,7 +217,7 @@ export default function AnalyticsPage() {
         <div className="card">
           <div className="section-title mb-4">Batches touchés par type d&apos;alerte (tous relevés)</div>
           {stats.alertBreakdown.every((a) => a.count === 0) ? (
-            <div className="text-center py-8 text-green-600 font-semibold">
+            <div className="text-center py-8 text-green-700 font-semibold">
               ✅ Aucune alerte détectée sur l&apos;ensemble des relevés
             </div>
           ) : (

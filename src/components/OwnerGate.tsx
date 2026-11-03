@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { requestPersistence, setDbOwner, sanitizeOwner } from '@/lib/db';
 import { loadSettings } from '@/lib/settings';
 import { ensureDailySnapshot, legacyAdoptedAt, legacyBatchCount, adoptLegacyData } from '@/lib/storage';
@@ -35,16 +36,21 @@ async function resolveOwner(): Promise<string> {
  * protège le stockage, prend la sauvegarde quotidienne et lance la synchronisation.
  */
 export default function OwnerGate({ children }: { children: React.ReactNode }) {
+  const isLogin = usePathname() === '/login';
   const [ready, setReady] = useState(false);
   const [legacy, setLegacy] = useState(0);
   const [adopting, setAdopting] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
 
+  // Re-exécuté à la sortie de /login : la connexion est une navigation douce, le propriétaire des données change alors.
   useEffect(() => {
+    if (isLogin) { setReady(true); return; } // page publique : aucun accès aux données, aucune synchro
+    setReady(false);
     let stop: (() => void) | undefined;
     let cancelled = false;
     (async () => {
       const owner = await resolveOwner();
+      if (cancelled) return;
       setDbOwner(owner);
       try {
         await loadSettings();
@@ -56,13 +62,14 @@ export default function OwnerGate({ children }: { children: React.ReactNode }) {
       }
       if (cancelled) return;
       setReady(true);
-      const stopSync = startSyncLoop();
+      // Sans compte (« local »), la synchro cloud n'existe pas : on ne l'interroge pas.
+      const stopSync = owner === 'local' ? () => undefined : startSyncLoop();
       void checkReminders().catch(() => undefined);
       const rem = setInterval(() => { void checkReminders().catch(() => undefined); }, 30 * 60_000);
       stop = () => { stopSync(); clearInterval(rem); };
     })();
     return () => { cancelled = true; stop?.(); };
-  }, []);
+  }, [isLogin]);
 
   if (!ready) return <div className="p-8 text-sm text-gray-500" role="status">Chargement des données locales…</div>;
 

@@ -75,7 +75,7 @@ function LoginForm() {
           </button>
         </form>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
+        <p className="text-xs text-gray-600 text-center mt-4">
           Comptes configurés côté serveur (variable <code className="bg-gray-100 px-1 rounded">AUTH_USERS</code>)
         </p>
       </div>

@@ -237,7 +237,7 @@ export default function BatchPage() {
               <span className={progress.ready ? 'font-semibold text-amber-700' : ''}>{progress.nextAction}</span>
               <span>J{progress.day} / {progress.target} j cible</span>
             </div>
-            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={progress.pct} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden" role="progressbar" aria-label="Progression du niveau" aria-valuenow={progress.pct} aria-valuemin={0} aria-valuemax={100}>
               <div className={`h-full rounded-full ${progress.ready ? 'bg-amber-500' : 'bg-brand-500'}`} style={{ width: `${progress.pct}%` }} />
             </div>
           </div>

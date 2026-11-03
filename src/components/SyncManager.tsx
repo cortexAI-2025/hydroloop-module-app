@@ -49,7 +49,7 @@ export function SyncBadge() {
 
   return (
     <Link href="/donnees" title={title} aria-label={`État de la synchronisation : ${label}. ${title}`}
-      className="inline-flex items-center gap-1.5 text-xs text-brand-100 px-2 py-1 rounded hover:bg-brand-700">
+      className="inline-flex items-center justify-center gap-1.5 text-xs text-brand-100 px-2 py-1 min-h-9 min-w-9 rounded hover:bg-brand-700">
       <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden />
       <span className="hidden sm:inline">{label}</span>
       <span className="sm:hidden">{pending > 0 ? pending : ''}</span>
