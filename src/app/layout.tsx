@@ -3,13 +3,14 @@ import './globals.css';
 import Navigation from '@/components/Navigation';
 import SessionWrapper from '@/components/SessionWrapper';
 import PwaRegister from '@/components/PwaRegister';
-import { SyncManager } from '@/components/SyncManager';
+import OwnerGate from '@/components/OwnerGate';
 
 export const metadata: Metadata = {
   title: 'HydroLoop™ — Farm Manager',
   description: 'Système expert de gestion de ferme hydroponique verticale A-Frame NFT',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon.svg', apple: '/icon.svg' },
+  icons: { icon: '/icon.svg', apple: '/icons/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'HydroLoop', statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {
@@ -24,9 +25,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SessionWrapper>
           <Navigation />
-          <main className="min-h-screen bg-gray-50">{children}</main>
+          <main className="min-h-screen bg-gray-50"><OwnerGate>{children}</OwnerGate></main>
           <PwaRegister />
-          <SyncManager />
         </SessionWrapper>
       </body>
     </html>

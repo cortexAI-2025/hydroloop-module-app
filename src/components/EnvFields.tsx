@@ -1,6 +1,6 @@
 'use client';
 import type { EnvironmentalData, PhaseNumber } from '@/types/batch';
-import { LEVEL_EC_RANGE } from '@/types/batch';
+import { describeRange, getActiveThresholds } from '@/lib/thresholds';
 
 interface Props {
   value: EnvironmentalData;
@@ -11,15 +11,15 @@ interface Props {
 type NumField = Exclude<keyof EnvironmentalData, 'photopériode'>;
 
 const FIELDS: { key: NumField; label: string; hint: (p: PhaseNumber) => string; step?: number; min?: number; max?: number }[] = [
-  { key: 'pH', label: 'pH solution', hint: () => '5.5–6.5', step: 0.1, min: 3, max: 9 },
-  { key: 'EC', label: 'EC (mS/cm)', hint: (p) => `niveau ${p} : ${LEVEL_EC_RANGE[p][0]}–${LEVEL_EC_RANGE[p][1]}`, step: 0.1, min: 0 },
-  { key: 'oxygene_dissous', label: 'O₂ dissous (mg/L)', hint: () => 'min 6', step: 0.1, min: 0 },
-  { key: 'temperature_solution', label: 'T° solution (°C)', hint: () => 'max 22', step: 0.1 },
-  { key: 'debit_NFT', label: 'Débit NFT (L/min)', hint: () => 'min 0.5', step: 0.1, min: 0 },
-  { key: 'temperature_air_jour', label: 'T° air jour (°C)', hint: () => '22–26', step: 0.1 },
-  { key: 'temperature_air_nuit', label: 'T° air nuit (°C)', hint: () => '16–20', step: 0.1 },
-  { key: 'humidite_relative', label: 'Humidité (%)', hint: () => '40–65', step: 1, min: 0, max: 100 },
-  { key: 'PPFD', label: 'PPFD (µmol/m²/s)', hint: (p) => (p === 3 ? '700–1 000' : '400–700'), step: 10, min: 0 },
+  { key: 'pH', label: 'pH solution', hint: () => describeRange('pH'), step: 0.1, min: 3, max: 9 },
+  { key: 'EC', label: 'EC (mS/cm)', hint: (p) => `niveau ${p} : ${getActiveThresholds().ecByLevel[p][0]}–${getActiveThresholds().ecByLevel[p][1]}`, step: 0.1, min: 0 },
+  { key: 'oxygene_dissous', label: 'O₂ dissous (mg/L)', hint: () => describeRange('oxygene_dissous'), step: 0.1, min: 0 },
+  { key: 'temperature_solution', label: 'T° solution (°C)', hint: () => describeRange('temperature_solution'), step: 0.1 },
+  { key: 'debit_NFT', label: 'Débit NFT (L/min)', hint: () => describeRange('debit_NFT'), step: 0.1, min: 0 },
+  { key: 'temperature_air_jour', label: 'T° air jour (°C)', hint: () => describeRange('temperature_air_jour'), step: 0.1 },
+  { key: 'temperature_air_nuit', label: 'T° air nuit (°C)', hint: () => describeRange('temperature_air_nuit'), step: 0.1 },
+  { key: 'humidite_relative', label: 'Humidité (%)', hint: () => describeRange('humidite_relative'), step: 1, min: 0, max: 100 },
+  { key: 'PPFD', label: 'PPFD (µmol/m²/s)', hint: () => (getActiveThresholds().metrics.PPFD.enabled ? describeRange('PPFD') : 'indicatif'), step: 10, min: 0 },
 ];
 
 export default function EnvFields({ value, onChange, phase }: Props) {

@@ -14,3 +14,14 @@ out/
 *.log
 npm-debug.log*
 *.tsbuildinfo
+
+# secrets : seuls les fichiers *.example sont versionnés
+.env
+.env.production
+.env.development
+.env*.local
+
+# tests
+test-results/
+playwright-report/
+coverage/

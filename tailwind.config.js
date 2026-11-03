@@ -4,6 +4,8 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Contraste WCAG AA (≥ 4,5:1 sur fond blanc/gris clair) : les gris « texte secondaire » sont assombris.
+        gray: { 400: '#6b7280', 500: '#4b5563' },
         brand: {
           50:  '#f0fdf4',
           100: '#dcfce7',

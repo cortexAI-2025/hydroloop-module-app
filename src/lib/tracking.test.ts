@@ -3,7 +3,7 @@ import type { BatchRecord, EnvironmentalData } from '@/types/batch';
 import { detectAlerts } from '@/types/batch';
 import {
   addReading, advanceLevel, alertRate, currentPhaseDay, isReadingDue, levelProgress,
-  normalizeRecord, pickNewer, readingStats, readingsToCsv, recordHarvest, withLiveDay,
+  normalizeRecord, readingStats, readingsToCsv, recordHarvest, withLiveDay,
 } from './tracking';
 
 const env: EnvironmentalData = {
@@ -119,17 +119,6 @@ describe('rotation et récolte', () => {
     expect(h.events.at(-1)!.summary).toMatch(/14.4 kg.*-40°C/);
     expect(() => recordHarvest(h, h.harvest!)).toThrow();
     expect(() => advanceLevel(h)).toThrow();
-  });
-});
-
-describe('fusion', () => {
-  it('garde la version la plus récente, la locale à égalité', () => {
-    const a = legacy();
-    const newer = { ...a, updatedAt: '2026-09-05T00:00:00.000Z' };
-    expect(pickNewer(a, newer)).toBe(newer);
-    expect(pickNewer(newer, a)).toBe(newer);
-    expect(pickNewer(a, { ...a })).toBe(a);
-    expect(pickNewer(undefined, a)).toBe(a);
   });
 });
 

@@ -101,12 +101,12 @@ export default function NewBatchPage() {
           <div className="section-title">Identification du batch</div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">Batch ID (auto-généré)</label>
-              <input className="input bg-gray-50 font-mono" value={form.BATCH_ID} readOnly />
+              <label className="label" htmlFor="f-1">Batch ID (auto-généré)</label>
+              <input id="f-1" className="input bg-gray-50 font-mono" value={form.BATCH_ID} readOnly />
             </div>
             <div>
-              <label className="label">Souche *</label>
-              <input
+              <label className="label" htmlFor="f-2">Souche *</label>
+              <input id="f-2"
                 className="input"
                 placeholder="ex : Beldiya Auto, Auto Sour RNA…"
                 required
@@ -115,8 +115,8 @@ export default function NewBatchPage() {
               />
             </div>
             <div>
-              <label className="label">Date de semis *</label>
-              <input
+              <label className="label" htmlFor="f-3">Date de semis *</label>
+              <input id="f-3"
                 className="input"
                 type="date"
                 required
@@ -125,8 +125,8 @@ export default function NewBatchPage() {
               />
             </div>
             <div>
-              <label className="label">Module (nombre de plants)</label>
-              <select
+              <label className="label" htmlFor="f-4">Module (nombre de plants)</label>
+              <select id="f-4"
                 className="input"
                 value={form.MODULE_TYPE}
                 onChange={(e) => setForm((f) => ({ ...f, MODULE_TYPE: Number(e.target.value) as ModuleType }))}
@@ -137,8 +137,8 @@ export default function NewBatchPage() {
               </select>
             </div>
             <div>
-              <label className="label">Module A-Frame</label>
-              <input
+              <label className="label" htmlFor="f-5">Module A-Frame</label>
+              <input id="f-5"
                 className="input font-mono"
                 placeholder="ex : A-03"
                 value={form.MODULE_ID}
@@ -146,8 +146,8 @@ export default function NewBatchPage() {
               />
             </div>
             <div>
-              <label className="label">Responsable du batch</label>
-              <input
+              <label className="label" htmlFor="f-6">Responsable du batch</label>
+              <input id="f-6"
                 className="input"
                 placeholder="Nom de l'opérateur"
                 autoComplete="name"
@@ -185,8 +185,8 @@ export default function NewBatchPage() {
           </div>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">Jour dans ce niveau * <span className="text-gray-400 font-normal">(1 pour une entrée aujourd&apos;hui)</span></label>
-              <input
+              <label className="label" htmlFor="f-7">Jour dans ce niveau * <span className="text-gray-400 font-normal">(1 pour une entrée aujourd&apos;hui)</span></label>
+              <input id="f-7"
                 className="input"
                 type="number"
                 min={1}
@@ -219,22 +219,22 @@ export default function NewBatchPage() {
           <div className="section-title">Observations culturales</div>
           <div className="space-y-4">
             <div>
-              <label className="label">Historique des tailles</label>
-              <textarea className="input resize-none" rows={2}
+              <label className="label" htmlFor="f-8">Historique des tailles</label>
+              <textarea id="f-8" className="input resize-none" rows={2}
                 placeholder="ex : 2 tailles — Jour 21 et Jour 28 de floraison"
                 value={form.HISTORIQUE_TAILLES}
                 onChange={(e) => setForm((f) => ({ ...f, HISTORIQUE_TAILLES: e.target.value }))} />
             </div>
             <div>
-              <label className="label">Derniers relevés racinaires</label>
-              <textarea className="input resize-none" rows={2}
+              <label className="label" htmlFor="f-9">Derniers relevés racinaires</label>
+              <textarea id="f-9" className="input resize-none" rows={2}
                 placeholder="ex : densité moyenne, couleur blanc crème, pas de pathogènes"
                 value={form.DERNIERS_RELEVES_RACINAIRES}
                 onChange={(e) => setForm((f) => ({ ...f, DERNIERS_RELEVES_RACINAIRES: e.target.value }))} />
             </div>
             <div>
-              <label className="label">Notes additionnelles</label>
-              <textarea className="input resize-none" rows={2}
+              <label className="label" htmlFor="f-10">Notes additionnelles</label>
+              <textarea id="f-10" className="input resize-none" rows={2}
                 placeholder="Observations libres, traitements en cours, incidents…"
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />

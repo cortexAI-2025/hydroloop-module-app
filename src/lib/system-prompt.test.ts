@@ -23,3 +23,11 @@ describe('formatTrackingContext', () => {
     expect(out).toContain('B0 13 kg / 48 plants');
   });
 });
+
+describe('prompt système', () => {
+  it('impose l’étiquetage mesuré / calculé / estimation / recommandation', async () => {
+    const { HYDROLOOP_SYSTEM_PROMPT: p } = await import('./system-prompt');
+    for (const tag of ['[MESURÉ]', '[CALCULÉ]', '[ESTIMATION]', '[RECOMMANDATION]']) expect(p).toContain(tag);
+    expect(p).toMatch(/jamais comme garanties/i);
+  });
+});

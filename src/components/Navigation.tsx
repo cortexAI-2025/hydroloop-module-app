@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/', label: 'Tableau de bord', short: 'Accueil' },
   { href: '/analytics', label: 'Analytiques', short: 'Stats' },
   { href: '/donnees', label: 'Données', short: 'Données' },
+  { href: '/reglages', label: 'Réglages', short: 'Réglages' },
   { href: '/batch/new', label: '+ Nouveau batch', short: '+ Batch' },
 ];
 
@@ -21,7 +22,7 @@ export default function Navigation() {
     <nav className="sticky top-0 z-40 bg-brand-800 shadow-md print:hidden">
       <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between gap-2">
-          <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="HydroLoop — tableau de bord">
+          <Link href="/" className="flex items-center gap-2 shrink-0 min-h-10" aria-label="HydroLoop™ tableau de bord">
             <LeafIcon />
             <span className="text-white font-bold text-lg tracking-tight hidden min-[400px]:inline">
               HydroLoop<sup className="text-xs font-normal">™</sup>
@@ -36,8 +37,8 @@ export default function Navigation() {
                   key={l.href}
                   href={l.href}
                   aria-current={on ? 'page' : undefined}
-                  className={`px-2 sm:px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap
-                    ${on ? 'bg-brand-600 text-white' : 'text-brand-100 hover:bg-brand-700 hover:text-white'}`}
+                  className={`inline-flex items-center min-h-10 px-2 sm:px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap
+                    ${on ? 'bg-brand-900 text-white' : 'text-brand-100 hover:bg-brand-700 hover:text-white'}`}
                 >
                   <span className="hidden md:inline">{l.label}</span>
                   <span className="md:hidden">{l.short}</span>
@@ -51,7 +52,10 @@ export default function Navigation() {
               <div className="flex items-center gap-2 ml-1 shrink-0">
                 <span className="hidden lg:inline text-brand-300 text-xs">{session.user?.name}</span>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={async () => {
+                    try { (await navigator.serviceWorker?.getRegistration())?.active?.postMessage({ type: 'CLEAR_PAGES' }); localStorage.removeItem('hydroloop:lastOwner'); } catch { /* ignore */ }
+                    await signOut({ callbackUrl: '/login' });
+                  }}
                   className="text-brand-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-brand-700 transition-colors"
                   title="Déconnexion"
                   aria-label="Déconnexion"

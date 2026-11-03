@@ -25,7 +25,7 @@ function LoginForm() {
     if (result?.ok) {
       router.push(params.get('callbackUrl') || '/');
     } else {
-      setError('Identifiants incorrects. Vérifiez vos variables AUTH_USERNAME et AUTH_PASSWORD.');
+      setError('Identifiants incorrects, ou trop de tentatives (réessayez dans quelques minutes).');
       setLoading(false);
     }
   }
@@ -41,8 +41,8 @@ function LoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label">Utilisateur</label>
-            <input
+            <label className="label" htmlFor="f-1">Utilisateur</label>
+            <input id="f-1"
               className="input"
               type="text"
               autoComplete="username"
@@ -53,8 +53,8 @@ function LoginForm() {
             />
           </div>
           <div>
-            <label className="label">Mot de passe</label>
-            <input
+            <label className="label" htmlFor="f-2">Mot de passe</label>
+            <input id="f-2"
               className="input"
               type="password"
               autoComplete="current-password"
@@ -75,9 +75,8 @@ function LoginForm() {
           </button>
         </form>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
-          Configurez <code className="bg-gray-100 px-1 rounded">AUTH_USERNAME</code> et{' '}
-          <code className="bg-gray-100 px-1 rounded">AUTH_PASSWORD</code> dans .env.local
+        <p className="text-xs text-gray-600 text-center mt-4">
+          Comptes configurés côté serveur (variable <code className="bg-gray-100 px-1 rounded">AUTH_USERS</code>)
         </p>
       </div>
     </div>
