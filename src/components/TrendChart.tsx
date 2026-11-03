@@ -38,8 +38,9 @@ export default function TrendChart({ readings, metric, label, unit = '', good, r
   if (pts.length === 0) return null;
 
   const vals = pts.map((p) => p.v);
-  let lo = Math.min(...vals, ...(good ?? []));
-  let hi = Math.max(...vals, ...(good ?? []));
+  const finiteGood = (good ?? []).filter(Number.isFinite);
+  let lo = Math.min(...vals, ...finiteGood);
+  let hi = Math.max(...vals, ...finiteGood);
   if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
   const span = hi - lo;
   lo -= span * 0.1;

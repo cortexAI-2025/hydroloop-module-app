@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/', label: 'Tableau de bord', short: 'Accueil' },
   { href: '/analytics', label: 'Analytiques', short: 'Stats' },
   { href: '/donnees', label: 'Données', short: 'Données' },
+  { href: '/reglages', label: 'Réglages', short: 'Réglages' },
   { href: '/batch/new', label: '+ Nouveau batch', short: '+ Batch' },
 ];
 

@@ -1,4 +1,5 @@
 'use client';
+import { isOutOfRange } from '@/lib/thresholds';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { getBatches, deleteBatch } from '@/lib/storage';
@@ -219,9 +220,9 @@ function BatchCard({ record, onDelete }: { record: TrackedBatch; onDelete: (id: 
             <div className={`text-[11px] mt-1 ${p.ready ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>{p.nextAction}</div>
           </div>
           <div className="grid grid-cols-3 gap-1.5 mb-3">
-            <Chip label="pH" value={env.pH} warn={env.pH < 5.5 || env.pH > 6.5} />
-            <Chip label="EC" value={`${env.EC}mS`} warn={env.EC < 0.8 || env.EC > 3} />
-            <Chip label="O₂" value={`${env.oxygene_dissous}mg/L`} warn={env.oxygene_dissous < 6} />
+            <Chip label="pH" value={env.pH} warn={isOutOfRange('pH', env.pH)} />
+            <Chip label="EC" value={`${env.EC}mS`} warn={isOutOfRange('EC', env.EC)} />
+            <Chip label="O₂" value={`${env.oxygene_dissous}mg/L`} warn={isOutOfRange('oxygene_dissous', env.oxygene_dissous)} />
           </div>
           {(alerts.length > 0 || isReadingDue(record)) && (
             <div className="text-xs font-medium mb-2 space-x-2">

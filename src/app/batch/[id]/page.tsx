@@ -6,7 +6,8 @@ import dynamic from 'next/dynamic';
 import { getBatch, updateBatch, updateReport, getStrainHistory } from '@/lib/storage';
 import { DATA_CHANGED_EVENT } from '@/lib/events';
 import type { BatchEventType, EnvironmentalData, HarvestData, Reading, ReportSource, TrackedBatch } from '@/types/batch';
-import { getActiveThresholds } from '@/lib/thresholds';
+import { getActiveThresholds, isOutOfRange, rangeOf } from '@/lib/thresholds';
+import { METRIC_META } from '@/lib/thresholds';
 import type { MetricKey } from '@/lib/thresholds';
 import { EVENT_LABELS, PHASE_COLORS, PHASE_LABELS, detectAlerts } from '@/types/batch';
 import {
@@ -15,6 +16,7 @@ import {
 } from '@/lib/tracking';
 import type { NumericEnvKey } from '@/lib/tracking';
 import { predictHarvest, fmtHarvestDate } from '@/lib/harvest';
+import { buildLocalReport, reportInputHash } from '@/lib/report-local';
 import type { TrackingContext } from '@/lib/system-prompt';
 import AlertBadge from '@/components/AlertBadge';
 import QRModal from '@/components/QRModal';
@@ -27,15 +29,15 @@ type Status = 'idle' | 'generating' | 'done' | 'error';
 type Dialog = null | 'reading' | 'log' | 'advance' | 'harvest' | 'edit';
 
 const MAIN_METRICS: { key: NumericEnvKey; label: string; unit: string; good?: [number, number] }[] = [
-  { key: 'pH', label: 'pH solution', unit: '', good: [5.5, 6.5] },
+  { key: 'pH', label: 'pH solution', unit: '' },
   { key: 'EC', label: 'EC', unit: 'mS/cm' },
-  { key: 'oxygene_dissous', label: 'O₂ dissous', unit: 'mg/L', good: [6, 14] },
-  { key: 'temperature_solution', label: 'T° solution', unit: '°C', good: [16, 22] },
+  { key: 'oxygene_dissous', label: 'O₂ dissous', unit: 'mg/L' },
+  { key: 'temperature_solution', label: 'T° solution', unit: '°C' },
 ];
 const MORE_METRICS: { key: NumericEnvKey; label: string; unit: string; good?: [number, number]; decimals?: number }[] = [
-  { key: 'debit_NFT', label: 'Débit NFT', unit: 'L/min', good: [0.5, 5] },
-  { key: 'temperature_air_jour', label: 'T° air jour', unit: '°C', good: [22, 26] },
-  { key: 'humidite_relative', label: 'Humidité relative', unit: '%', good: [40, 65], decimals: 0 },
+  { key: 'debit_NFT', label: 'Débit NFT', unit: 'L/min' },
+  { key: 'temperature_air_jour', label: 'T° air jour', unit: '°C' },
+  { key: 'humidite_relative', label: 'Humidité relative', unit: '%', decimals: 0 },
   { key: 'PPFD', label: 'PPFD', unit: 'µmol/m²/s', decimals: 0 },
 ];
 
@@ -51,12 +53,14 @@ export default function BatchPage() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [actionError, setActionError] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const [histDays, setHistDays] = useState<number[]>([]);
   const autoStarted = useRef(false);
 
   const load = useCallback(async () => {
     const r = await getBatch(id);
     if (!r) { router.replace('/'); return; }
     setRecord(r);
+    void getStrainHistory(r.data.SOUCHE, r.id).then((h) => setHistDays(h.harvests.map((x) => x.level3Days).filter((d): d is number => typeof d === 'number'))).catch(() => undefined);
     if (r.report && status !== 'generating') {
       setReport(r.report);
       setSource(r.reportSource);
@@ -97,17 +101,38 @@ export default function BatchPage() {
       strainHistory,
     };
 
+    const inputHash = reportInputHash(record);
+    const local = (why: string) => {
+      const md = buildLocalReport(record, { history: strainHistory }).replace('# Rapport local', `# Rapport local`) + `\n\n> Raison : ${why}`;
+      return md;
+    };
+    const finish = async (full: string, src: ReportSource) => {
+      setReport(full);
+      setSource(src);
+      const updated = await updateReport(id, full, src, inputHash);
+      if (updated) setRecord(updated);
+      setStatus('done');
+    };
+
+    // Hors ligne : rapport local immédiat, sans appel réseau.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      await finish(local('hors ligne — l’analyse IA nécessite une connexion.'), 'fallback');
+      return;
+    }
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...record.data, tracking }),
       });
+      if (res.status === 401) throw new Error('Session expirée : reconnectez-vous pour utiliser l’analyse IA.');
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(err.error || `HTTP ${res.status}`);
+        if (res.status === 400 || res.status === 413) throw new Error(err.error || `HTTP ${res.status}`);
+        // IA indisponible, limitée ou en erreur : on bascule sur le rapport local, clairement étiqueté.
+        await finish(local(err.error || `service IA indisponible (HTTP ${res.status})`), 'fallback');
+        return;
       }
-      const src: ReportSource = res.headers.get('x-report-source') === 'fallback' ? 'fallback' : 'ai';
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let full = '';
@@ -117,11 +142,13 @@ export default function BatchPage() {
         full += decoder.decode(value, { stream: true });
         setReport(full);
       }
-      setSource(src);
-      const updated = await updateReport(id, full, src);
-      if (updated) setRecord(updated);
-      setStatus('done');
+      await finish(full, 'ai');
     } catch (e: unknown) {
+      // Réseau coupé en cours de route : on garde un rapport utilisable plutôt qu'une erreur.
+      if (e instanceof TypeError) {
+        await finish(local('connexion interrompue.'), 'fallback');
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
       setStatus('error');
     }
@@ -142,7 +169,7 @@ export default function BatchPage() {
   const env = data.DONNEES_ENVIRONNEMENTALES;
   const alerts = detectAlerts(env);
   const progress = levelProgress(record);
-  const harvest = predictHarvest(phase, progress.day, record.levelTargetDays[3]);
+  const harvest = predictHarvest(phase, progress.day, record.levelTargetDays[3], new Date(), { window: getActiveThresholds().harvestWindow, historyDays: histDays });
   const due = isReadingDue(record);
   const sinceH = hoursSinceLastReading(record);
   const ecRange = getActiveThresholds().ecByLevel[phase];
@@ -224,11 +251,11 @@ export default function BatchPage() {
         )}
 
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
-          <Chip label="pH" value={env.pH} warn={env.pH < 5.5 || env.pH > 6.5} />
+          <Chip label="pH" value={env.pH} warn={isOutOfRange('pH', env.pH)} />
           <Chip label={`EC (cible ${ecRange[0]}–${ecRange[1]})`} value={`${env.EC} mS`} warn={ecOff} />
-          <Chip label="O₂" value={`${env.oxygene_dissous} mg/L`} warn={env.oxygene_dissous < 6} />
-          <Chip label="T° sol." value={`${env.temperature_solution}°C`} warn={env.temperature_solution > 22} />
-          <Chip label="Débit" value={`${env.debit_NFT} L/min`} warn={env.debit_NFT < 0.5} />
+          <Chip label="O₂" value={`${env.oxygene_dissous} mg/L`} warn={isOutOfRange('oxygene_dissous', env.oxygene_dissous)} />
+          <Chip label="T° sol." value={`${env.temperature_solution}°C`} warn={isOutOfRange('temperature_solution', env.temperature_solution)} />
+          <Chip label="Débit" value={`${env.debit_NFT} L/min`} warn={isOutOfRange('debit_NFT', env.debit_NFT)} />
           <Chip label="Photopér." value={env.photopériode} />
         </div>
         <div className="text-xs text-gray-400">
@@ -266,10 +293,10 @@ export default function BatchPage() {
         <div className="grid sm:grid-cols-2 gap-3">
           {MAIN_METRICS.map((m) => (
             <TrendChart key={m.key} readings={record.readings} metric={m.key} label={m.label} unit={m.unit}
-              good={m.key === 'EC' ? ecRange : m.good} rangeOf={m.key === 'EC' ? ecRangeOf : undefined} />
+              good={m.key === 'EC' ? ecRange : goodOf(m.key)} rangeOf={m.key === 'EC' ? ecRangeOf : undefined} />
           ))}
           {showMore && MORE_METRICS.map((m) => (
-            <TrendChart key={m.key} readings={record.readings} metric={m.key} label={m.label} unit={m.unit} good={m.good} decimals={m.decimals} />
+            <TrendChart key={m.key} readings={record.readings} metric={m.key} label={m.label} unit={m.unit} good={goodOf(m.key)} decimals={m.decimals} />
           ))}
         </div>
         <button className="mt-3 text-xs font-semibold text-brand-700 hover:underline print:hidden" onClick={() => setShowMore((s) => !s)}>
@@ -299,7 +326,7 @@ export default function BatchPage() {
         {source === 'fallback' && status === 'done' && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2 mb-4 text-xs text-amber-700 flex items-center gap-2 print:hidden">
             <span>⚠️</span>
-            <span>Rapport de secours (analyse locale). <button className="underline font-semibold" onClick={generate}>Régénérer avec l&apos;IA →</button></span>
+            <span>Rapport local (sans IA) : mesures, calculs et règles uniquement, aucune estimation de rendement. <button className="underline font-semibold" onClick={generate}>Régénérer avec l&apos;IA →</button></span>
           </div>
         )}
         {status === 'generating' && (
@@ -452,8 +479,25 @@ function HarvestWidget({ harvest, phaseDay, target }: { harvest: ReturnType<type
           <div className="text-sm text-gray-700">{harvest.trichomeAdvice}</div>
         </div>
       </div>
+      {harvest.range && (
+        <div className="mt-3 text-xs text-gray-600 space-y-1">
+          <div><span className="font-semibold">Fourchette :</span> de {fmtHarvestDate(harvest.range.earliest)} à {fmtHarvestDate(harvest.range.latest)} ({harvest.range.minDays}–{harvest.range.maxDays} j)</div>
+          <div><span className="font-semibold">Incertitude :</span> {harvest.uncertainty}</div>
+          <details>
+            <summary className="cursor-pointer font-semibold">Hypothèses de l’estimation</summary>
+            <ul className="list-disc ml-5 mt-1">{harvest.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
+          </details>
+          <div className="italic text-gray-500">{harvest.disclaimer}</div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Bande « zone cible » des graphiques : la plage configurée (bornes absentes → bornes de l'axe). */
+function goodOf(key: NumericEnvKey): [number, number] | undefined {
+  const r = key === 'EC' || key === 'temperature_air_nuit' || !(key in METRIC_META) ? null : rangeOf(key as MetricKey);
+  return r ?? undefined; // bornes absentes = ±Infinity (le graphique les borne à l'axe)
 }
 
 const ecRangeOf = (r: Reading) => getActiveThresholds().ecByLevel[r.phase];

@@ -5,6 +5,7 @@ import { loadSettings } from '@/lib/settings';
 import { ensureDailySnapshot, legacyAdoptedAt, legacyBatchCount, adoptLegacyData } from '@/lib/storage';
 import { startSyncLoop } from '@/lib/sync/runtime';
 import { notifyDataChanged } from '@/lib/events';
+import { checkReminders } from '@/lib/reminders';
 
 const OWNER_CACHE = 'hydroloop:lastOwner';
 
@@ -55,7 +56,10 @@ export default function OwnerGate({ children }: { children: React.ReactNode }) {
       }
       if (cancelled) return;
       setReady(true);
-      stop = startSyncLoop();
+      const stopSync = startSyncLoop();
+      void checkReminders().catch(() => undefined);
+      const rem = setInterval(() => { void checkReminders().catch(() => undefined); }, 30 * 60_000);
+      stop = () => { stopSync(); clearInterval(rem); };
     })();
     return () => { cancelled = true; stop?.(); };
   }, []);

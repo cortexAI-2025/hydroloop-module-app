@@ -25,7 +25,7 @@ function LoginForm() {
     if (result?.ok) {
       router.push(params.get('callbackUrl') || '/');
     } else {
-      setError('Identifiants incorrects. Vérifiez vos variables AUTH_USERNAME et AUTH_PASSWORD.');
+      setError('Identifiants incorrects, ou trop de tentatives (réessayez dans quelques minutes).');
       setLoading(false);
     }
   }
@@ -76,8 +76,7 @@ function LoginForm() {
         </form>
 
         <p className="text-xs text-gray-400 text-center mt-4">
-          Configurez <code className="bg-gray-100 px-1 rounded">AUTH_USERNAME</code> et{' '}
-          <code className="bg-gray-100 px-1 rounded">AUTH_PASSWORD</code> dans .env.local
+          Comptes configurés côté serveur (variable <code className="bg-gray-100 px-1 rounded">AUTH_USERS</code>)
         </p>
       </div>
     </div>
