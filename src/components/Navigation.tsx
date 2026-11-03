@@ -52,7 +52,10 @@ export default function Navigation() {
               <div className="flex items-center gap-2 ml-1 shrink-0">
                 <span className="hidden lg:inline text-brand-300 text-xs">{session.user?.name}</span>
                 <button
-                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  onClick={async () => {
+                    try { (await navigator.serviceWorker?.getRegistration())?.active?.postMessage({ type: 'CLEAR_PAGES' }); localStorage.removeItem('hydroloop:lastOwner'); } catch { /* ignore */ }
+                    await signOut({ callbackUrl: '/login' });
+                  }}
                   className="text-brand-200 hover:text-white text-xs px-2 py-1 rounded hover:bg-brand-700 transition-colors"
                   title="Déconnexion"
                   aria-label="Déconnexion"

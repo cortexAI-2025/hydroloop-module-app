@@ -9,7 +9,8 @@ export const metadata: Metadata = {
   title: 'HydroLoop™ — Farm Manager',
   description: 'Système expert de gestion de ferme hydroponique verticale A-Frame NFT',
   manifest: '/manifest.webmanifest',
-  icons: { icon: '/icon.svg', apple: '/icon.svg' },
+  icons: { icon: '/icon.svg', apple: '/icons/apple-touch-icon.png' },
+  appleWebApp: { capable: true, title: 'HydroLoop', statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {

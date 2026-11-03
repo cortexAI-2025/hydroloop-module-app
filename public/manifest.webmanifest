@@ -1,20 +1,24 @@
 {
+  "id": "/",
   "name": "HydroLoop™ Farm Manager",
   "short_name": "HydroLoop",
-  "description": "Gestion de ferme hydroponique verticale A-Frame NFT",
+  "description": "Suivi de culture hydroponique A-Frame NFT — fonctionne hors ligne",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "theme_color": "#166534",
   "background_color": "#f0fdf4",
-  "icons": [
-    {
-      "src": "/icon.svg",
-      "type": "image/svg+xml",
-      "sizes": "any",
-      "purpose": "any maskable"
-    }
-  ],
+  "lang": "fr",
   "categories": ["productivity", "agriculture"],
-  "lang": "fr"
+  "icons": [
+    { "src": "/icons/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" },
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Nouveau batch", "short_name": "+ Batch", "url": "/batch/new", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Données et synchronisation", "short_name": "Données", "url": "/donnees", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
 }

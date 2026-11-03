@@ -41,8 +41,8 @@ function LoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="label">Utilisateur</label>
-            <input
+            <label className="label" htmlFor="f-1">Utilisateur</label>
+            <input id="f-1"
               className="input"
               type="text"
               autoComplete="username"
@@ -53,8 +53,8 @@ function LoginForm() {
             />
           </div>
           <div>
-            <label className="label">Mot de passe</label>
-            <input
+            <label className="label" htmlFor="f-2">Mot de passe</label>
+            <input id="f-2"
               className="input"
               type="password"
               autoComplete="current-password"
