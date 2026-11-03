@@ -131,4 +131,34 @@ describe('RLS — table batches', () => {
     const r = await db.query<{ ok: boolean }>(`select server_updated_at > '2020-01-01'::timestamptz as ok from public.batches where id = 'T1' and owner_id = 'alice'`);
     expect(r.rows[0].ok).toBe(true);
   });
+
+  it('suppression logique (UPDATE deleted_at) autorisée au propriétaire, conservée en base', async () => {
+    const r = await as('authenticated', 'alice', () => db.query(`update public.batches set deleted_at = now(), rev = 3 where id = 'A1' and owner_id = 'alice' and rev = 2 returning deleted_at`));
+    expect(r.rows).toHaveLength(1);
+    const still = await db.query(`select count(*)::int as n from public.batches where id = 'A1' and owner_id = 'alice'`);
+    expect(still.rows[0]).toEqual({ n: 1 });
+  });
+
+  it('TRUNCATE et DDL refusés au rôle authenticated', async () => {
+    expect(await as('authenticated', 'alice', () => rejects(db.exec('truncate public.batches')))).toMatch(/permission denied/i);
+    expect(await as('authenticated', 'alice', () => rejects(db.exec('alter table public.batches disable row level security')))).toMatch(/must be owner|permission denied/i);
+  });
+
+  it('contraintes : révision < 1 et identifiant vide refusés', async () => {
+    expect(await as('authenticated', 'carol', () => rejects(db.exec(`insert into public.batches (owner_id, id, rev, data, created_at, updated_at) values ('carol','C1',0,'{}',now(),now())`)))).toMatch(/check|violates/i);
+    expect(await as('authenticated', 'carol', () => rejects(db.exec(`insert into public.batches (owner_id, id, data, created_at, updated_at) values ('carol','','{}',now(),now())`)))).toMatch(/check|violates/i);
+  });
+
+  it('un jeton dont le rôle serait « anon » ne contourne rien (rôle PostgreSQL = anon)', async () => {
+    const err = await as('anon', 'alice', () => rejects(db.query('select * from public.batches')));
+    expect(err).toMatch(/permission denied/i);
+  });
+
+  it('la table a RLS activée et forcée, et exactement 3 politiques (select/insert/update) toutes réservées à authenticated', async () => {
+    const t = await db.query<{ relrowsecurity: boolean; relforcerowsecurity: boolean }>(`select relrowsecurity, relforcerowsecurity from pg_class where oid = 'public.batches'::regclass`);
+    expect(t.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+    const p = await db.query<{ cmd: string; roles: string }>(`select cmd, roles::text as roles from pg_policies where tablename = 'batches' order by cmd`);
+    expect(p.rows.map((x) => x.cmd)).toEqual(['INSERT', 'SELECT', 'UPDATE']);
+    for (const x of p.rows) expect(x.roles).toBe('{authenticated}');
+  });
 });

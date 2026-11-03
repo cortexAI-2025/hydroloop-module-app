@@ -145,3 +145,68 @@ describe('moteur de synchronisation', () => {
     expect((await devB.get('B2026-09-01-AAAA'))!.deletedAt).toBeTruthy();
   });
 });
+
+describe('suppression logique et restauration entre appareils', () => {
+  const ID = 'B2026-09-01-AAAA';
+  const setup = async () => {
+    await localWrite(devA, makeRecord());
+    await runSync(devA, remoteA);
+    await runSync(devB, remoteB);
+  };
+  const del = async (dev: MemoryLocal, at: string) => {
+    const r = (await dev.get(ID))!;
+    await localWrite(dev, { ...r, updatedAt: at, deletedAt: at });
+  };
+
+  it('suppression sur A puis restauration sur B (activité postérieure) : le batch revit partout, sans perte', async () => {
+    await setup();
+    await del(devA, '2026-10-01T00:00:00.000Z');
+    await runSync(devA, remoteA);
+    await runSync(devB, remoteB);
+    expect((await devB.get(ID))!.deletedAt).toBeTruthy();
+    // B restaure en saisissant un relevé daté après la suppression
+    const b = (await devB.get(ID))!;
+    const { deletedAt: _d, ...rest } = b; void _d;
+    await localWrite(devB, withReading(rest as BatchRecord, 'r-after', '2026-10-02T08:00:00.000Z'));
+    await runSync(devB, remoteB);
+    await runSync(devA, remoteA);
+    for (const dev of [devA, devB]) {
+      const r = (await dev.get(ID))!;
+      expect(r.deletedAt).toBeUndefined();
+      expect(r.readings!.map((x) => x.id)).toContain('r-after');
+    }
+  });
+
+  it('suppression sur A pendant que B ajoute un relevé plus récent : le relevé n’est pas perdu, le batch reste actif', async () => {
+    await setup();
+    await del(devA, '2026-10-01T00:00:00.000Z');
+    await localWrite(devB, withReading((await devB.get(ID))!, 'r-b', '2026-10-05T08:00:00.000Z'));
+    await runSync(devA, remoteA);
+    await runSync(devB, remoteB);
+    await runSync(devA, remoteA);
+    const a = (await devA.get(ID))!;
+    expect(a.deletedAt).toBeUndefined();
+    expect(a.readings!.map((x) => x.id)).toContain('r-b');
+  });
+
+  it('suppression plus récente que toute activité : propagée, données conservées dans le batch supprimé', async () => {
+    await setup();
+    await localWrite(devB, withReading((await devB.get(ID))!, 'r-old', '2026-09-20T08:00:00.000Z'));
+    await del(devA, '2026-10-01T00:00:00.000Z');
+    await runSync(devA, remoteA);
+    await runSync(devB, remoteB);
+    await runSync(devA, remoteA);
+    const b = (await devB.get(ID))!;
+    expect(b.deletedAt).toBeTruthy();
+    expect(b.readings!.map((x) => x.id)).toContain('r-old'); // rien n'est détruit
+    expect(remoteA.rows.get(ID)!.record.readings!.map((x) => x.id)).toContain('r-old');
+  });
+
+  it('un jeton expiré (SyncAuthError) laisse la file d’attente intacte', async () => {
+    await localWrite(devA, makeRecord());
+    const { SyncAuthError } = await import('./types');
+    remoteA.fetchSince = async () => { throw new SyncAuthError('jeton expiré'); };
+    await expect(runSync(devA, remoteA)).rejects.toThrow(/expiré/);
+    expect((await devA.get(ID))!.sync!.dirty).toBe(true);
+  });
+});

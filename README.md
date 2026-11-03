@@ -60,6 +60,8 @@ Tests et résultats : [docs/TESTS.md](docs/TESTS.md).
 | [docs/SECURITE.md](docs/SECURITE.md) | Authentification, isolation, en-têtes, limites, risques résiduels |
 | [docs/SAUVEGARDE_RESTAURATION.md](docs/SAUVEGARDE_RESTAURATION.md) | Procédures de sauvegarde et de restauration |
 | [docs/CHECKLIST_DEPLOIEMENT.md](docs/CHECKLIST_DEPLOIEMENT.md) | Liste de contrôle avant mise en production |
+| [docs/DOSSIER_VALIDATION.md](docs/DOSSIER_VALIDATION.md) | **Dossier de recette** : preuves, verdicts, blocages |
+| [docs/RECETTE_SUPABASE.md](docs/RECETTE_SUPABASE.md) · [docs/RECETTE_ANDROID.md](docs/RECETTE_ANDROID.md) · [docs/VALIDATION_AGRONOMIQUE.md](docs/VALIDATION_AGRONOMIQUE.md) · [docs/RISQUES_RESIDUELS.md](docs/RISQUES_RESIDUELS.md) | Procédures de recette humaines |
 | [docs/RELEASE_NOTES_V1.0.md](docs/RELEASE_NOTES_V1.0.md) | Nouveautés, changements incompatibles, limites connues |
 
 ## Structure
