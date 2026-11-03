@@ -8,12 +8,11 @@ import type {
   Reading,
   TrackedBatch,
 } from '@/types/batch';
-import { DEFAULT_LEVEL_TARGET_DAYS, PHASE_LABELS, detectAlerts } from '@/types/batch';
+import { PHASE_LABELS, detectAlerts } from '@/types/batch';
+import { DEFAULT_THRESHOLDS, getActiveThresholds } from '@/lib/thresholds';
+import type { Thresholds } from '@/lib/thresholds';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Relevé considéré « en retard » au-delà de ce délai. */
-export const READING_DUE_HOURS = 24;
 
 export function uid(prefix = ''): string {
   const rnd =
@@ -21,6 +20,18 @@ export function uid(prefix = ''): string {
       ? crypto.randomUUID().slice(0, 8)
       : Math.random().toString(36).slice(2, 10);
   return `${prefix}${Date.now().toString(36)}${rnd}`;
+}
+
+const ID_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // sans 0/O/1/I pour rester lisible sur une étiquette
+
+/**
+ * Identifiant de batch : `B<AAAA-MM-JJ>-<4 caractères aléatoires>`.
+ * Le suffixe aléatoire évite les collisions entre appareils hors ligne (32⁴ ≈ 1 M de combinaisons par jour).
+ */
+export function newBatchId(now: Date = new Date(), rand: () => number = Math.random): string {
+  let suffix = '';
+  for (let i = 0; i < 4; i++) suffix += ID_ALPHABET[Math.floor(rand() * ID_ALPHABET.length)];
+  return `B${now.toISOString().slice(0, 10)}-${suffix}`;
 }
 
 /**
@@ -62,7 +73,8 @@ export function normalizeRecord(r: BatchRecord): TrackedBatch {
     ...r,
     status: r.status ?? (r.harvest ? 'harvested' : 'active'),
     phaseStartedAt,
-    levelTargetDays: { ...DEFAULT_LEVEL_TARGET_DAYS, ...r.levelTargetDays },
+    levelTargetDays: { ...DEFAULT_THRESHOLDS.levelTargetDays, ...getActiveThresholds().levelTargetDays, ...r.levelTargetDays },
+    rev: r.rev ?? 1,
     readings,
     events,
   };
@@ -96,8 +108,8 @@ export function hoursSinceLastReading(r: TrackedBatch, now: Date = new Date()): 
   return (now.getTime() - new Date(latestReading(r).at).getTime()) / (60 * 60 * 1000);
 }
 
-export function isReadingDue(r: TrackedBatch, now: Date = new Date()): boolean {
-  return r.status === 'active' && hoursSinceLastReading(r, now) >= READING_DUE_HOURS;
+export function isReadingDue(r: TrackedBatch, now: Date = new Date(), t: Thresholds = getActiveThresholds()): boolean {
+  return r.status === 'active' && hoursSinceLastReading(r, now) >= t.readingDueHours;
 }
 
 export interface LevelProgress {
@@ -151,7 +163,7 @@ export function addReading(
   const reading: Reading = { id: uid('r-'), at, phase: r.data.PHASE_NUMBER, env, operator: opts.operator, note: opts.note };
   const readings = [...r.readings, reading].sort((a, b) => a.at.localeCompare(b.at));
   const isLatest = readings[readings.length - 1].id === reading.id;
-  const alerts = detectAlerts(env);
+  const alerts = detectAlerts(env, getActiveThresholds(), r.data.PHASE_NUMBER);
   const summary = `pH ${env.pH} · EC ${env.EC} · O₂ ${env.oxygene_dissous} mg/L · T° sol. ${env.temperature_solution}°C${
     alerts.length ? ` — ${alerts.length} alerte${alerts.length > 1 ? 's' : ''}` : ''
   }${opts.note ? ` — ${opts.note}` : ''}`;
@@ -245,18 +257,10 @@ export function readingStats(readings: Reading[]): Partial<Record<NumericEnvKey,
 }
 
 /** Pourcentage des relevés comportant au moins une alerte. */
-export function alertRate(readings: Reading[]): number {
+export function alertRate(readings: Reading[], t: Thresholds = getActiveThresholds()): number {
   if (readings.length === 0) return 0;
-  const n = readings.filter((r) => detectAlerts(r.env).length > 0).length;
+  const n = readings.filter((r) => detectAlerts(r.env, t, r.phase).length > 0).length;
   return Math.round((n / readings.length) * 100);
-}
-
-// ─── Fusion (synchronisation / import) ───────────────────────────────────────
-
-/** Garde la version la plus récente ; à égalité, la version locale. */
-export function pickNewer(local: BatchRecord | undefined, remote: BatchRecord): BatchRecord {
-  if (!local) return remote;
-  return new Date(remote.updatedAt).getTime() > new Date(local.updatedAt).getTime() ? remote : local;
 }
 
 // ─── Export CSV ──────────────────────────────────────────────────────────────
@@ -279,7 +283,7 @@ export function readingsToCsv(batches: TrackedBatch[]): string {
           b.data.BATCH_ID, b.data.SOUCHE, b.data.MODULE_ID ?? '', r.phase, r.at, r.operator ?? '',
           ...NUMERIC_ENV_KEYS.map((k) => r.env[k]),
           r.env.photopériode,
-          detectAlerts(r.env).map((a) => a.label).join(' | '),
+          detectAlerts(r.env, getActiveThresholds(), r.phase).map((a) => a.label).join(' | '),
           r.note ?? '',
         ]
           .map(csvCell)

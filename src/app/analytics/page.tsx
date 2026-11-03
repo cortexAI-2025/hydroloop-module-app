@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getBatches } from '@/lib/storage';
-import { isCloudEnabled } from '@/lib/supabase';
+import { cloudConfigured as isCloudEnabled } from '@/lib/sync/runtime';
 import type { TrackedBatch } from '@/types/batch';
 import { PHASE_LABELS, detectAlerts } from '@/types/batch';
 

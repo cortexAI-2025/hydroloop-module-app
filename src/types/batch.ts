@@ -1,3 +1,6 @@
+import { DEFAULT_THRESHOLDS, METRIC_META, describeRange, getActiveThresholds } from '@/lib/thresholds';
+import type { MetricKey, Thresholds } from '@/lib/thresholds';
+
 export type PhaseNumber = 1 | 2 | 3;
 export type ModuleType = 12 | 24 | 36 | 48;
 
@@ -13,15 +16,8 @@ export const PHASE_COLORS: Record<PhaseNumber, string> = {
   3: 'bg-purple-100 text-purple-800',
 };
 
-/** Durée cible par niveau A-Frame (jours) — rotation HydroLoop de 20 à 27 jours. */
-export const DEFAULT_LEVEL_TARGET_DAYS: Record<PhaseNumber, number> = { 1: 21, 2: 21, 3: 27 };
-
-/** Plage EC recommandée par niveau (mS/cm), selon le dossier technique HydroLoop. */
-export const LEVEL_EC_RANGE: Record<PhaseNumber, [number, number]> = {
-  1: [1.2, 1.6],
-  2: [1.8, 2.2],
-  3: [2.4, 2.8],
-};
+/** Valeurs par défaut des durées cibles par niveau (les valeurs effectives viennent des réglages). */
+export const DEFAULT_LEVEL_TARGET_DAYS: Record<PhaseNumber, number> = { ...DEFAULT_THRESHOLDS.levelTargetDays };
 
 export interface EnvironmentalData {
   temperature_air_jour: number;
@@ -73,7 +69,8 @@ export type BatchEventType =
   | 'note'
   | 'edit'
   | 'report'
-  | 'harvest';
+  | 'harvest'
+  | 'merge';
 
 export const EVENT_LABELS: Record<BatchEventType, string> = {
   created: 'Création du batch',
@@ -84,8 +81,9 @@ export const EVENT_LABELS: Record<BatchEventType, string> = {
   treatment: 'Traitement',
   note: 'Note',
   edit: 'Modification',
-  report: 'Rapport IA',
+  report: 'Rapport',
   harvest: 'Récolte',
+  merge: 'Fusion de synchronisation',
 };
 
 export interface BatchEvent {
@@ -110,12 +108,23 @@ export interface HarvestData {
 
 export type ReportSource = 'ai' | 'fallback';
 
+/** État de synchronisation d'un enregistrement local (jamais envoyé tel quel au cloud). */
+export interface SyncInfo {
+  /** Modifications locales pas encore envoyées au cloud. */
+  dirty: boolean;
+  /** Révision cloud connue lors de la dernière synchro ; null = jamais envoyé. */
+  baseRev: number | null;
+  lastSyncedAt?: string;
+}
+
 export interface BatchRecord {
   id: string;
   data: BatchFormData;
   report?: string;
   reportSource?: ReportSource;
   reportAt?: string;
+  /** Empreinte des données ayant servi au dernier rapport (évite de régénérer pour rien). */
+  reportInputHash?: string;
   createdAt: string;
   updatedAt: string;
   // ── Suivi de culture (v2) — optionnels pour rester compatible avec les anciens enregistrements
@@ -128,39 +137,49 @@ export interface BatchRecord {
   harvest?: HarvestData;
   /** Suppression logique, propagée par la synchronisation cloud. */
   deletedAt?: string;
+  // ── Synchronisation (v3)
+  /** Compteur de modifications locales. */
+  rev?: number;
+  sync?: SyncInfo;
 }
 
 /** Enregistrement normalisé : tous les champs de suivi sont présents. */
 export type TrackedBatch = BatchRecord &
-  Required<Pick<BatchRecord, 'status' | 'phaseStartedAt' | 'levelTargetDays' | 'readings' | 'events'>>;
+  Required<Pick<BatchRecord, 'status' | 'phaseStartedAt' | 'levelTargetDays' | 'readings' | 'events' | 'rev'>>;
 
 export interface EnvAlert {
-  field: string;
+  field: MetricKey;
   label: string;
   value: number;
   message: string;
   severity: 'warning' | 'danger';
 }
 
-export function detectAlerts(env: EnvironmentalData): EnvAlert[] {
+/**
+ * Alertes sur un relevé, selon les seuils configurés.
+ * Si `phase` est fourni et que l'EC respecte la plage générale, elle est comparée à la plage cible du niveau.
+ */
+export function detectAlerts(env: EnvironmentalData, t: Thresholds = getActiveThresholds(), phase?: PhaseNumber): EnvAlert[] {
   const alerts: EnvAlert[] = [];
-
-  if (env.pH < 5.5)
-    alerts.push({ field: 'pH', label: 'pH', value: env.pH, message: `pH trop bas (< 5.5) — blocage nutritif`, severity: 'danger' });
-  if (env.pH > 6.5)
-    alerts.push({ field: 'pH', label: 'pH', value: env.pH, message: `pH trop élevé (> 6.5) — blocage nutritif`, severity: 'danger' });
-
-  if (env.oxygene_dissous < 6)
-    alerts.push({ field: 'oxygene_dissous', label: 'O₂ dissous', value: env.oxygene_dissous, message: `O₂ dissous insuffisant (< 6 mg/L) — risque d'anoxie`, severity: 'danger' });
-
-  if (env.temperature_solution > 22)
-    alerts.push({ field: 'temperature_solution', label: 'Temp. solution', value: env.temperature_solution, message: `Température solution trop haute (> 22°C) — risque de pathogènes`, severity: 'warning' });
-
-  if (env.EC < 0.8 || env.EC > 3.0)
-    alerts.push({ field: 'EC', label: 'EC', value: env.EC, message: `EC hors plage optimale (0.8–3.0 mS/cm)`, severity: 'warning' });
-
-  if (env.debit_NFT < 0.5)
-    alerts.push({ field: 'debit_NFT', label: 'Débit NFT', value: env.debit_NFT, message: `Débit NFT faible (< 0.5 L/min) — risque de zones sèches`, severity: 'warning' });
-
+  for (const key of Object.keys(t.metrics) as MetricKey[]) {
+    const rule = t.metrics[key];
+    if (!rule.enabled) continue;
+    const value = Number(env[key]);
+    if (!Number.isFinite(value)) continue;
+    const meta = METRIC_META[key];
+    const unit = meta.unit ? ` ${meta.unit}` : '';
+    if (rule.min !== undefined && value < rule.min) {
+      alerts.push({ field: key, label: meta.label, value, severity: rule.severity, message: `${meta.label} trop bas (< ${rule.min}${unit}) — plage configurée ${describeRange(key, t)}` });
+    } else if (rule.max !== undefined && value > rule.max) {
+      alerts.push({ field: key, label: meta.label, value, severity: rule.severity, message: `${meta.label} trop élevé (> ${rule.max}${unit}) — plage configurée ${describeRange(key, t)}` });
+    }
+  }
+  if (phase && !alerts.some((a) => a.field === 'EC') && t.metrics.EC.enabled) {
+    const [lo, hi] = t.ecByLevel[phase];
+    const ec = Number(env.EC);
+    if (Number.isFinite(ec) && (ec < lo || ec > hi)) {
+      alerts.push({ field: 'EC', label: 'EC', value: ec, severity: 'warning', message: `EC hors plage cible du niveau ${phase} (${lo}–${hi} mS/cm)` });
+    }
+  }
   return alerts;
 }

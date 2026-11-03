@@ -6,7 +6,9 @@ import dynamic from 'next/dynamic';
 import { getBatch, updateBatch, updateReport, getStrainHistory } from '@/lib/storage';
 import { DATA_CHANGED_EVENT } from '@/lib/events';
 import type { BatchEventType, EnvironmentalData, HarvestData, Reading, ReportSource, TrackedBatch } from '@/types/batch';
-import { EVENT_LABELS, LEVEL_EC_RANGE, PHASE_COLORS, PHASE_LABELS, detectAlerts } from '@/types/batch';
+import { getActiveThresholds } from '@/lib/thresholds';
+import type { MetricKey } from '@/lib/thresholds';
+import { EVENT_LABELS, PHASE_COLORS, PHASE_LABELS, detectAlerts } from '@/types/batch';
 import {
   addEvent, addReading, advanceLevel, alertRate, daysSinceSowing, hoursSinceLastReading,
   isReadingDue, latestReading, levelProgress, readingStats, recordHarvest,
@@ -143,7 +145,7 @@ export default function BatchPage() {
   const harvest = predictHarvest(phase, progress.day, record.levelTargetDays[3]);
   const due = isReadingDue(record);
   const sinceH = hoursSinceLastReading(record);
-  const ecRange = LEVEL_EC_RANGE[phase];
+  const ecRange = getActiveThresholds().ecByLevel[phase];
   const ecOff = env.EC < ecRange[0] || env.EC > ecRange[1];
   const lastChange = record.events.filter((e) => e.type === 'reading' || e.type === 'level_change').at(-1)?.at;
   const reportStale = !!(record.reportAt && lastChange && lastChange > record.reportAt);
@@ -361,8 +363,8 @@ export default function BatchPage() {
             </thead>
             <tbody>
               {[...record.readings].reverse().map((r) => {
-                const bad = new Set(detectAlerts(r.env).map((a) => a.field));
-                const c = (k: string) => (bad.has(k) ? 'text-red-600 font-semibold' : '');
+                const bad = new Set(detectAlerts(r.env, getActiveThresholds(), r.phase).map((a) => a.field));
+                const c = (k: MetricKey) => (bad.has(k) ? 'text-red-600 font-semibold' : '');
                 return (
                   <tr key={r.id} className="border-b border-gray-50">
                     <td className="py-1.5 pr-2 whitespace-nowrap">{fmtDateTime(r.at)}</td>
@@ -454,7 +456,7 @@ function HarvestWidget({ harvest, phaseDay, target }: { harvest: ReturnType<type
   );
 }
 
-const ecRangeOf = (r: Reading) => LEVEL_EC_RANGE[r.phase];
+const ecRangeOf = (r: Reading) => getActiveThresholds().ecByLevel[r.phase];
 
 function dotColor(t: BatchEventType) {
   switch (t) {

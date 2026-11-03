@@ -1,6 +1,6 @@
 'use client';
 import type { EnvironmentalData, PhaseNumber } from '@/types/batch';
-import { LEVEL_EC_RANGE } from '@/types/batch';
+import { getActiveThresholds } from '@/lib/thresholds';
 
 interface Props {
   value: EnvironmentalData;
@@ -12,7 +12,7 @@ type NumField = Exclude<keyof EnvironmentalData, 'photopériode'>;
 
 const FIELDS: { key: NumField; label: string; hint: (p: PhaseNumber) => string; step?: number; min?: number; max?: number }[] = [
   { key: 'pH', label: 'pH solution', hint: () => '5.5–6.5', step: 0.1, min: 3, max: 9 },
-  { key: 'EC', label: 'EC (mS/cm)', hint: (p) => `niveau ${p} : ${LEVEL_EC_RANGE[p][0]}–${LEVEL_EC_RANGE[p][1]}`, step: 0.1, min: 0 },
+  { key: 'EC', label: 'EC (mS/cm)', hint: (p) => `niveau ${p} : ${getActiveThresholds().ecByLevel[p][0]}–${getActiveThresholds().ecByLevel[p][1]}`, step: 0.1, min: 0 },
   { key: 'oxygene_dissous', label: 'O₂ dissous (mg/L)', hint: () => 'min 6', step: 0.1, min: 0 },
   { key: 'temperature_solution', label: 'T° solution (°C)', hint: () => 'max 22', step: 0.1 },
   { key: 'debit_NFT', label: 'Débit NFT (L/min)', hint: () => 'min 0.5', step: 0.1, min: 0 },

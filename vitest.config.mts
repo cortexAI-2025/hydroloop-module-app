@@ -5,6 +5,10 @@ import path from 'node:path';
 process.env.TZ = 'UTC';
 
 export default defineConfig({
-  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  resolve: { alias: { '@': path.resolve(import.meta.dirname, 'src') } },
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts', 'supabase/**/*.test.ts'],
+    testTimeout: 30_000,
+  },
 });
