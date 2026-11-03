@@ -1,88 +1,77 @@
-# HydroLoop™ Farm Manager
+# HydroLoop™ Farm Manager — V1.0
 
-Application de suivi de culture pour les modules **HydroLoop Farm** (A-Frame NFT, 3 niveaux à boucles nutritives indépendantes, rotation des cohortes tous les 20 à 27 jours). Elle s'installe sur téléphone (PWA), fonctionne hors ligne et synchronise les données dans le cloud quand le réseau revient.
+Application de suivi de culture pour les modules **HydroLoop Farm** (A-Frame NFT, 3 niveaux à boucles nutritives indépendantes, rotation des cohortes tous les 20 à 27 jours). Installable sur Android (PWA), **entièrement utilisable hors ligne**, avec synchronisation cloud (Supabase) qui ne perd ni n'écrase aucune donnée.
 
-## Fonctionnalités
+> Concept, conception et brevet : **Ahmed Akafou**. Application : **AIWorkPay** — contact@aiworkpay.fr.
 
-| Domaine | Ce que fait l'application |
-|---|---|
-| **Batches** | Création d'une cohorte (souche, module A-Frame, nombre de plants, responsable, date de semis, niveau de départ, premier relevé). |
-| **Relevés** | Saisie rapide pré-remplie (pH, EC, O₂ dissous, T° solution, débit NFT, T° air, humidité, PPFD, photopériode), horodatée, avec opérateur et observation. Alertes immédiates. |
-| **Rotation** | Jour dans le niveau calculé automatiquement, durée cible par niveau (21/21/27 j par défaut, modifiable), bouton « Monter au niveau suivant », vue « Rotation par module ». |
-| **Journal** | Tailles, contrôles racinaires, traitements, notes ; chaque action est horodatée et signée. |
-| **Récolte** | Masse fraîche, plants, rendement g/plante, température et délai de congélation, n° de lot, destination. Clôt le batch. |
-| **Tendances** | Courbes par paramètre avec plage cible (EC jugée selon le niveau de chaque relevé) et tableau complet des relevés. |
-| **Rapport IA** | Analyse racines / feuilles / trims / fleurs par Claude, nourrie des tendances, du journal et de l'historique de la souche. Rapport de secours local si l'IA est indisponible. |
-| **Traçabilité** | Passeport de lot **Taqnin ID Batch** imprimable avec QR code, étiquette QR à coller sur le module. |
-| **Tableau de bord** | Actions à faire (relevé en retard > 24 h, niveau prêt à monter, récolte, alerte critique), filtres et recherche. |
-| **Analytiques** | Alertes sur l'ensemble des relevés, rendements par souche, moyennes, activité. |
-| **Données** | État de la configuration, synchronisation manuelle, sauvegarde JSON, import/fusion, export CSV des relevés. |
+## Garanties de fiabilité (V1.0)
 
-## Démarrage
+- **Enregistrement local d'abord** : toute saisie est écrite dans IndexedDB avant tout appel réseau ; le réseau n'est jamais nécessaire pour saisir.
+- **Aucune perte silencieuse** : modifications simultanées sur deux appareils → les relevés et événements sont *réunis* ; les valeurs écartées sont consignées dans le journal du batch. Une version ancienne ne remplace jamais une version récente. → [docs/SYNCHRONISATION.md](docs/SYNCHRONISATION.md)
+- **Isolation par utilisateur** : une base locale par compte, et côté cloud des politiques RLS PostgreSQL (testées). → [docs/SECURITE.md](docs/SECURITE.md)
+- **Sauvegarde/restauration** : export JSON/CSV, import par fusion, copies de sécurité automatiques, corbeille. → [docs/SAUVEGARDE_RESTAURATION.md](docs/SAUVEGARDE_RESTAURATION.md)
+- **Agronomie transparente** : seuils configurables et documentés, prévisions avec hypothèses, fourchette et incertitude ; le rapport distingue mesures, calculs et recommandations. → [docs/SEUILS.md](docs/SEUILS.md)
+
+## Installation (développement)
+
+Prérequis : Node.js 22, npm.
 
 ```bash
-npm install
-cp .env.local.example .env.local   # puis renseigner les variables utiles
-npm run dev                        # http://localhost:3000
+npm ci
+cp .env.example .env.local     # puis renseigner (voir ci-dessous)
+npm run dev                    # http://localhost:3000
 ```
 
-Toutes les variables sont optionnelles : sans elles, l'application fonctionne en local (IndexedDB) avec des rapports de secours.
+Sans aucune variable, l'application fonctionne en local, sans compte, avec rapports locaux (sans IA).
+**En production**, l'application refuse de servir sans comptes (`AUTH_USERS`) — c'est voulu.
+
+### Variables d'environnement
+
+Voir [.env.example](.env.example) (aucun secret réel). Principales :
 
 | Variable | Rôle |
 |---|---|
-| `ANTHROPIC_API_KEY` | Active les rapports IA. |
-| `ANTHROPIC_MODEL` | Modèle utilisé (défaut `claude-opus-5-5`). |
-| `AUTH_USERNAME`, `AUTH_PASSWORD` | Activent la connexion par mot de passe. |
-| `NEXTAUTH_SECRET` | **Obligatoire en production** si la connexion est activée (`openssl rand -base64 32`). |
-| `NEXTAUTH_URL` | URL publique de l'application. |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Activent la synchronisation cloud. |
-
-### Supabase
-
-Dans l'éditeur SQL du projet :
-
-```sql
-CREATE TABLE IF NOT EXISTS batches (
-  id         TEXT PRIMARY KEY,
-  data       JSONB       NOT NULL,
-  report     TEXT,
-  tracking   JSONB,
-  created_at TIMESTAMPTZ NOT NULL,
-  updated_at TIMESTAMPTZ NOT NULL
-);
--- Base créée avec la v1 de l'application :
-ALTER TABLE batches ADD COLUMN IF NOT EXISTS tracking JSONB;
-```
-
-> ⚠️ La clé `anon` est publique (elle est envoyée au navigateur). Sans politique RLS, toute personne qui la récupère peut lire et modifier la table. Réservez le projet Supabase à cette application et activez des politiques RLS adaptées avant d'y stocker des données sensibles.
-
-La synchronisation a lieu au démarrage, au retour du réseau, au retour sur l'onglet et toutes les 5 minutes. Les modifications faites hors ligne sont mises en file d'attente. En cas de conflit, la version la plus récente de chaque batch l'emporte ; les suppressions sont propagées (suppression logique).
+| `AUTH_USERS` | Comptes `nom:secret,…` (secret en clair ou haché : `npm run auth:hash -- "mot de passe"`). |
+| `NEXTAUTH_SECRET`, `NEXTAUTH_URL` | Sessions (obligatoire en production). |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Rapports IA (facultatif ; sans clé : rapport local). |
+| `AI_*` | Plafonds de coût de l'IA. |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` | Synchronisation cloud → [docs/SUPABASE.md](docs/SUPABASE.md). |
 
 ## Scripts
 
 | Commande | Effet |
 |---|---|
-| `npm run dev` | Serveur de développement |
-| `npm run build` / `npm start` | Build et serveur de production |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript |
-| `npm test` | Tests unitaires (Vitest) |
+| `npm run dev` / `npm run build` / `npm start` | Développement / build / production |
+| `npm run lint` · `npm run typecheck` | ESLint · TypeScript strict |
+| `npm test` | Tests unitaires, intégration, API, RLS (Vitest) |
+| `npm run e2e` | Tests de bout en bout (Playwright : hors ligne, PWA, auth, accessibilité, Android) |
+| `npm run auth:hash -- "mdp"` | Haché scrypt pour `AUTH_USERS` |
 
-## Déploiement
+Tests et résultats : [docs/TESTS.md](docs/TESTS.md).
 
-Application Next.js 15 standard : Vercel (recommandé) ou tout hébergeur Node 18+. Renseigner les variables d'environnement ci-dessus, en particulier `NEXTAUTH_SECRET` si la connexion est activée. La route `/api/analyze` diffuse le rapport en streaming (durée max. 300 s).
+## Documentation
+
+| Document | Contenu |
+|---|---|
+| [docs/GUIDE_UTILISATEUR.md](docs/GUIDE_UTILISATEUR.md) | Utilisation quotidienne, hors ligne, installation Android |
+| [docs/SUPABASE.md](docs/SUPABASE.md) | Mise en place du cloud, RLS, migration depuis la V0 |
+| [docs/SYNCHRONISATION.md](docs/SYNCHRONISATION.md) | Modèle de synchro, règles de fusion, cas limites |
+| [docs/SEUILS.md](docs/SEUILS.md) | Seuils par défaut, justification, configuration, prévisions |
+| [docs/SECURITE.md](docs/SECURITE.md) | Authentification, isolation, en-têtes, limites, risques résiduels |
+| [docs/SAUVEGARDE_RESTAURATION.md](docs/SAUVEGARDE_RESTAURATION.md) | Procédures de sauvegarde et de restauration |
+| [docs/CHECKLIST_DEPLOIEMENT.md](docs/CHECKLIST_DEPLOIEMENT.md) | Liste de contrôle avant mise en production |
+| [docs/RELEASE_NOTES_V1.0.md](docs/RELEASE_NOTES_V1.0.md) | Nouveautés, changements incompatibles, limites connues |
 
 ## Structure
 
 ```
-src/
-  app/                 pages (tableau de bord, batch, passeport, analytiques, données) et routes API
-  components/          formulaires de suivi, graphiques, QR, synchronisation
-  lib/tracking.ts      logique de suivi (jours de niveau, relevés, rotation, récolte, export CSV)
-  lib/storage.ts       persistance IndexedDB, sauvegarde / import
-  lib/sync.ts          synchronisation Supabase avec file d'attente hors ligne
-  lib/system-prompt.ts prompt de l'analyse IA
-  types/batch.ts       modèle de données
+src/app/            pages (tableau de bord, batch, passeport, analytiques, données, réglages) et routes API
+src/components/     OwnerGate (identité + synchro), PwaRegister (hors ligne/installation), formulaires, graphiques
+src/lib/db.ts       IndexedDB v2 (une base par compte), instantanés, persistance
+src/lib/storage.ts  opérations sur les batches, sauvegarde/import par fusion, corbeille
+src/lib/merge.ts    fusion déterministe de deux versions d'un batch
+src/lib/sync/       moteur de synchro (indépendant du réseau), client Supabase, jeton
+src/lib/analysis.ts, harvest.ts, report-local.ts, thresholds.ts   agronomie
+supabase/migrations schéma + RLS ; supabase/rls.test.ts les teste sur PostgreSQL (PGlite)
+e2e/                Playwright + faux serveur Supabase
 ```
-
-Concept, conception et brevet : **Ahmed Akafou**. Application : **AIWorkPay** — contact@aiworkpay.fr.

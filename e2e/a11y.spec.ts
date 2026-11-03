@@ -8,7 +8,7 @@ const found: string[] = [];
 
 async function audit(page: import('@playwright/test').Page, name: string) {
   await page.waitForLoadState('networkidle');
-  const res = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+  const res = await new AxeBuilder({ page: page as never }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   for (const v of res.violations) found.push(`${name} — ${v.id} (${v.impact}) ×${v.nodes.length}: ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`);
 }
 
