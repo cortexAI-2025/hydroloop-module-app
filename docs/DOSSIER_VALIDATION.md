@@ -7,7 +7,8 @@ PR #2 · branche `feature/hydroloop-v1-finalization` · aucune fusion, aucun dé
 | Contrôle | Résultat | Preuve |
 |---|---|---|
 | CI GitHub Actions du dernier commit applicatif `739b496` | ✅ success — run #6 (push) et #7 (pull_request) | https://github.com/cortexAI-2025/hydroloop-module-app/actions/runs/41634904832 |
-| Historique CI | run #1 (`78f4bb6`) ❌ typecheck e2e, corrigé ; runs #2–#7 ✅ | Actions |
+| CI du commit de clôture `0a42125` (incl. nouveau pas `check:bundle`) | ✅ success — run #8 (push) et #9 (pull_request) | https://github.com/cortexAI-2025/hydroloop-module-app/actions/runs/41640505585 |
+| Historique CI | run #1 (`78f4bb6`) ❌ typecheck e2e, corrigé ; runs #2–#9 ✅ | Actions |
 | lint · typecheck · build de production | ✅ | exécution locale + CI |
 | `npm test` | ✅ 14 fichiers, **134 tests** passés, 7 ignorés (recettes Supabase ×5 et Anthropic ×2, voir §3) | local |
 | RLS sur PostgreSQL réel local (PGlite) | ✅ 19 tests | `supabase/rls.test.ts` |
