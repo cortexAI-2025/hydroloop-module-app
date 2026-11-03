@@ -2,6 +2,27 @@
 
 **Statut : BLOQUÉ — nécessite un humain et un appareil.** Seule une émulation (Chromium, Pixel 7) a été exécutée (`e2e/mobile.spec.ts`).
 
+## Version testable (instance de recette locale, sans production)
+Sur un poste de développement (Node 22, `adb` installé, téléphone en USB avec débogage activé) :
+```bash
+npm ci
+npm run recette:android          # build de production + faux Supabase local, comptes alice/bob
+adb reverse tcp:3100 tcp:3100 && adb reverse tcp:3199 tcp:3199
+# Chrome sur le téléphone → http://localhost:3100
+```
+`localhost` via `adb reverse` est un contexte sûr : PWA, service worker, installation et hors ligne fonctionnent sans certificat. L'état du faux cloud se consulte sur `http://localhost:3199/__rows`. Pour tester l'installation depuis une URL HTTPS réelle, il faut un **environnement de recette hébergé** (intervention humaine : voir DOSSIER_VALIDATION §5). Instance vérifiée au démarrage : `/login` répond 200 et le faux cloud 200 (aucun appareil n'a pu être branché ici).
+
+## Preuves automatisées déjà obtenues (émulation Chromium, **ne remplacent pas** l'appareil physique)
+| Scénario | Preuve émulée | Fichier |
+|---|---|---|
+| A2, A3, A5, A6 | création hors ligne, rechargement hors ligne, retour réseau → cloud | `e2e/offline-sync.spec.ts` |
+| S1, S2, S4 | cloud, second appareil, isolation entre comptes | `e2e/offline-sync.spec.ts` |
+| S3 | deux appareils hors ligne, un relevé chacun → les deux conservés partout | `e2e/conflict-delete.spec.ts` |
+| S5 | suppression propagée, corbeille, restauration propagée | `e2e/conflict-delete.spec.ts` |
+| U1 | pas de défilement horizontal, cibles ≥ 32 px (Pixel 7 émulé) | `e2e/mobile.spec.ts` |
+| A1 (partiel) | manifeste, icônes maskable/any, service worker | `e2e/auth-pwa.spec.ts` |
+Restent **uniquement testables sur appareil** : rendu réel de l'icône (A1), invite d'installation Chrome, mode avion réel, redémarrage de l'app (A5), B2 (persistance du stockage), U2, U3 (notifications), U4.
+
 ## Prérequis
 Android 10+ avec Chrome à jour ; URL HTTPS de **recette** (pas la production) ; 2 comptes de test (`recette-a`, `recette-b`) ; si le cloud est testé, un projet Supabase de recette (docs/RECETTE_SUPABASE.md) ; second appareil ou navigateur pour S3–S5. Données fictives uniquement.
 

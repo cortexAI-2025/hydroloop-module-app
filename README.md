@@ -46,6 +46,9 @@ Voir [.env.example](.env.example) (aucun secret réel). Principales :
 | `npm test` | Tests unitaires, intégration, API, RLS (Vitest) |
 | `npm run e2e` | Tests de bout en bout (Playwright : hors ligne, PWA, auth, accessibilité, Android) |
 | `npm run auth:hash -- "mdp"` | Haché scrypt pour `AUTH_USERS` |
+| `npm run recette:android` | Instance de recette locale (faux Supabase) pour tester sur Android |
+| `npm run recette:supabase` · `npm run recette:anthropic` | Recettes sur services **de test** (gardées, ignorées par défaut) |
+| `npm run check:bundle` | Vérifie l'absence de secrets dans le code client |
 
 Tests et résultats : [docs/TESTS.md](docs/TESTS.md).
 

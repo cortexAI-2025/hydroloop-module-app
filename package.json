@@ -12,7 +12,10 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "auth:hash": "node scripts/hash-password.mjs",
-    "recette:supabase": "vitest run src/lib/sync/supabase.live.test.ts"
+    "recette:supabase": "vitest run src/lib/sync/supabase.live.test.ts",
+    "recette:anthropic": "vitest run src/app/api/analyze/anthropic.live.test.ts",
+    "recette:android": "node scripts/recette-android.mjs",
+    "check:bundle": "node scripts/check-bundle-secrets.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
