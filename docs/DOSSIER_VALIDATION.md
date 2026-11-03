@@ -6,7 +6,7 @@ PR #2 · branche `feature/hydroloop-v1-finalization` · aucune fusion, aucun dé
 
 | Contrôle | Résultat | Source |
 |---|---|---|
-| CI GitHub Actions sur `c417424` (push + pull_request) | ✅ **success** (jobs qualité + e2e) | runs #2 et #3 |
+| CI GitHub Actions sur `c417424` (push + pull_request) et sur `3101b0b` (push) | ✅ **success** (jobs qualité + e2e) | runs #2, #3, #4 |
 | CI sur `78f4bb6` | ❌ échec **typecheck** (erreur de typage dans `e2e/a11y.spec.ts`), corrigé dans `c417424` ; e2e du même run : ✅ | run #1 |
 | lint · typecheck | ✅ | exécution locale |
 | Tests unitaires/intégration/API/RLS | ✅ **14 fichiers, 134 tests passés** (+5 « recette Supabase » volontairement ignorés, voir blocage) | `npm test` |
