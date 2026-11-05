@@ -43,7 +43,13 @@ async function launchAndConnect() {
   try { sh('forward', '--remove', 'tcp:9222'); } catch { /* aucun forward */ }
   sh('forward', 'tcp:9222', `localabstract:webview_devtools_remote_${pid}`);
   browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:9222', defaultViewport: null });
-  page = await waitFor(async () => (await browser.pages())[0], 'page de la WebView');
+  console.log('cibles DevTools :', JSON.stringify(await (await fetch('http://127.0.0.1:9222/json/list')).json()).slice(0, 600));
+  page = await waitFor(async () => {
+    const pages = await browser.pages();
+    if (pages.length) return pages[0];
+    const t = browser.targets().find((x) => x.type() === 'page' && !x.url().startsWith('devtools://'));
+    return t ? await t.page() : null;
+  }, 'page de la WebView', 45_000);
 }
 async function closeConnection() { try { await browser?.disconnect(); } catch { /* ignoré */ } }
 const rows = async () => (await fetch(`${MOCK}/__rows`)).json();
