@@ -104,13 +104,14 @@ jobs:
           cp "$SRC" "dist/$APK_NAME"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt2" dump badging "dist/$APK_NAME" > dist/badging.txt
-          grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission|launchable-activity" dist/badging.txt | tee dist/apk-info.txt
+          grep -E "^package:|dkVersion|uses-permission|launchable-activity" dist/badging.txt | tee dist/apk-info.txt
           grep -q "name='com.hydroloopfarm.manager'" dist/badging.txt
           grep -q "versionName='1.0-beta'" dist/badging.txt
-          grep -q "^sdkVersion:'26'" dist/badging.txt
+          grep -qE "^(min)?[sS]dkVersion:'26'" dist/badging.txt
           grep -q "^targetSdkVersion:'35'" dist/badging.txt
-          PERMS=$(grep -c "^uses-permission" dist/badging.txt || true)
-          [ "$PERMS" -le 1 ] || { echo "::error::permissions inattendues"; grep "^uses-permission" dist/badging.txt; exit 1; }
+          # Seule INTERNET est demandée ; la permission interne <paquet>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION est ajoutée par AndroidX (signature, propre à l'application).
+          UNEXPECTED=$(grep "^uses-permission" dist/badging.txt | sed -E "s/.*name='([^']+)'.*/\1/" | grep -v -e '^android.permission.INTERNET$' -e '^com.hydroloopfarm.manager.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION$' || true)
+          [ -z "$UNEXPECTED" ] || { echo "::error::permissions inattendues : $UNEXPECTED"; exit 1; }
           "$BT/apksigner" verify --verbose "dist/$APK_NAME" | tee dist/apksigner.txt
           SIZE=$(stat -c %s "dist/$APK_NAME"); echo "taille: $SIZE octets"
           [ "$SIZE" -gt 1000000 ] || { echo "::error::APK trop petit"; exit 1; }
