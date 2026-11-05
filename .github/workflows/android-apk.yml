@@ -224,8 +224,6 @@ jobs:
           set -o pipefail
           bash mobile/scripts/build-apk.sh
           cp mobile/android/app/build/outputs/apk/debug/app-debug.apk smoke.apk
-      - name: Pilote DevTools pour la WebView (outil de test, hors dépendances du produit)
-        run: npm install --no-save --no-audit --no-fund puppeteer-core@24
       - name: "Image système de l'émulateur (nouvelles tentatives, le téléchargement est parfois tronqué)"
         run: |
           for i in 1 2 3 4; do

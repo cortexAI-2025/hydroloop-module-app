@@ -1,6 +1,5 @@
-// Test de bout en bout sur émulateur Android : pilote la vraie WebView de l'APK via DevTools (CDP, puppeteer-core).
+// Test de bout en bout sur émulateur Android : pilote la vraie WebView de l'APK via DevTools (CDP natif).
 // Environnement de recette uniquement : faux Supabase local, comptes fictifs. Aucune production.
-import puppeteer from 'puppeteer-core';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 
@@ -10,10 +9,68 @@ const PKG = 'com.hydroloopfarm.manager';
 const OUT = 'smoke-out';
 mkdirSync(OUT, { recursive: true });
 
+
+/** Client CDP minimal (WebSocket natif de Node 22) : la WebView n'accepte pas les commandes « Browser.* » de Playwright/Puppeteer. */
+class CdpPage {
+  constructor(ws) {
+    this.ws = ws; this.id = 0; this.pending = new Map(); this.listeners = [];
+    ws.addEventListener('message', (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.id && this.pending.has(m.id)) {
+        const { resolve, reject } = this.pending.get(m.id); this.pending.delete(m.id);
+        m.error ? reject(new Error(`${m.error.message}`)) : resolve(m.result);
+      } else if (m.method) this.listeners.forEach((l) => l(m));
+    });
+  }
+  static async connect(wsUrl) {
+    const ws = new WebSocket(wsUrl);
+    await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', () => rej(new Error('WebSocket DevTools refusé'))); });
+    const p = new CdpPage(ws);
+    await p.send('Page.enable'); await p.send('Runtime.enable'); await p.send('Network.enable');
+    return p;
+  }
+  send(method, params = {}) {
+    const id = ++this.id;
+    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.ws.send(JSON.stringify({ id, method, params })); });
+  }
+  waitEvent(name, timeout = 60_000) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`événement ${name} non reçu`)), timeout);
+      const l = (m) => { if (m.method === name) { clearTimeout(t); this.listeners = this.listeners.filter((x) => x !== l); resolve(m.params); } };
+      this.listeners.push(l);
+    });
+  }
+  async evaluate(fn, ...args) {
+    const expression = `(${fn.toString()})(...${JSON.stringify(args)})`;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+        if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
+        return r.result.value;
+      } catch (e) {
+        if (attempt < 6 && /context|destroyed|navigat/i.test(String(e.message))) { await sleep(700); continue; }
+        throw e;
+      }
+    }
+  }
+  async goto(u) {
+    const loaded = this.waitEvent('Page.domContentEventFired');
+    await this.send('Page.navigate', { url: u });
+    await loaded;
+  }
+  async reload() { const loaded = this.waitEvent('Page.domContentEventFired'); await this.send('Page.reload'); await loaded; }
+  url() { return this.evaluate(() => location.href); }
+  title() { return this.evaluate(() => document.title); }
+  has(sel) { return this.evaluate((q) => !!document.querySelector(q), sel); }
+  async setOfflineMode(offline) { await this.send('Network.emulateNetworkConditions', { offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }); }
+  async screenshot({ path }) { const r = await this.send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path, Buffer.from(r.data, 'base64')); }
+  close() { try { this.ws.close(); } catch { /* ignoré */ } }
+}
+
 const sh = (...args) => execFileSync('adb', args, { encoding: 'utf8' });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
-let browser, page, current = 'init';
+let page, current = 'init';
 
 async function step(name, fn) {
   current = name;
@@ -42,19 +99,17 @@ async function launchAndConnect() {
   await waitFor(() => sh('shell', 'cat', '/proc/net/unix').includes(`webview_devtools_remote_${pid}`), 'socket DevTools de la WebView');
   try { sh('forward', '--remove', 'tcp:9222'); } catch { /* aucun forward */ }
   sh('forward', 'tcp:9222', `localabstract:webview_devtools_remote_${pid}`);
-  browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:9222', defaultViewport: null });
-  console.log('cibles DevTools :', JSON.stringify(await (await fetch('http://127.0.0.1:9222/json/list')).json()).slice(0, 600));
-  page = await waitFor(async () => {
-    const pages = await browser.pages();
-    if (pages.length) return pages[0];
-    const t = browser.targets().find((x) => x.type() === 'page' && !x.url().startsWith('devtools://'));
-    return t ? await t.page() : null;
+  const targets = await waitFor(async () => {
+    const list = await (await fetch('http://127.0.0.1:9222/json/list')).json();
+    return list.filter((t) => t.type === 'page' && t.webSocketDebuggerUrl);
   }, 'page de la WebView', 45_000);
+  console.log('cible DevTools :', targets[0].url);
+  page = await CdpPage.connect(targets[0].webSocketDebuggerUrl);
 }
-async function closeConnection() { try { await browser?.disconnect(); } catch { /* ignoré */ } }
+async function closeConnection() { page?.close(); }
 const rows = async () => (await fetch(`${MOCK}/__rows`)).json();
 const text = () => page.evaluate(() => document.body.innerText);
-const go = (path) => page.goto(`${BASE}${path}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+const go = (path) => page.goto(`${BASE}${path}`);
 const url = () => page.url();
 
 /** Renseigne un champ repéré par son libellé (compatible champs contrôlés par React). */
@@ -91,33 +146,33 @@ async function click(nameRe, { root = 'body', last = false } = {}) {
 
 async function login(user = 'alice') {
   await go('/login');
-  await page.waitForNetworkIdle({ idleTime: 800, timeout: 30_000 }).catch(() => {});
+  await sleep(1500);
   await fill(/utilisateur/i, user);
   await fill(/mot de passe/i, `pw-${user}-test`);
   await click(/se connecter/i);
-  await waitFor(() => !url().includes('/login'), 'redirection après connexion');
+  await waitFor(async () => !(await url()).includes('/login'), 'redirection après connexion');
 }
 async function createBatch(strain) {
   await go('/batch/new');
   await waitFor(() => page.evaluate(() => [...document.querySelectorAll('label')].some((l) => /souche/i.test(l.textContent || ''))), 'formulaire de culture');
-  await page.waitForNetworkIdle({ idleTime: 500, timeout: 15_000 }).catch(() => {});
+  await sleep(800);
   await fill(/souche/i, strain);
   await click(/créer|enregistrer|démarrer/i, { last: true });
-  await waitFor(() => /\/batch\/B/.test(url()), 'page de la culture créée', 30_000);
-  return decodeURIComponent(new URL(url()).pathname.split('/')[2]);
+  await waitFor(async () => /\/batch\/B/.test(await url()), 'page de la culture créée', 30_000);
+  return decodeURIComponent(new URL(await url()).pathname.split('/')[2]);
 }
 async function addReading(ph, note) {
   await click(/nouveau relevé/i);
-  await waitFor(() => page.$('[role=dialog]'), 'fenêtre de relevé');
+  await waitFor(() => page.has('[role=dialog]'), 'fenêtre de relevé');
   await fill(/ph solution/i, ph, '[role=dialog]');
   await fill(/observation/i, note, '[role=dialog]');
   await click(/enregistrer le relevé/i, { root: '[role=dialog]' });
-  await waitFor(async () => !(await page.$('[role=dialog]')), 'fermeture de la fenêtre de relevé');
+  await waitFor(async () => !(await page.has('[role=dialog]')), 'fermeture de la fenêtre de relevé');
 }
 async function offlineReady() {
   const sw = () => page.evaluate(() => !!navigator.serviceWorker?.controller);
   if (!(await waitFor(sw, 'service worker actif dans la WebView', 45_000).catch(() => false))) {
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.reload();
     await waitFor(sw, 'service worker actif (après rechargement)', 45_000);
   }
   await waitFor(() => page.evaluate(async () => {
@@ -136,7 +191,8 @@ try {
     expect((await page.title()) !== '', 'titre vide');
     const body = await text();
     expect(!/ERR_|webpage is not available|page web est inaccessible/i.test(body), `page d’erreur : ${body.slice(0, 120)}`);
-    expect(new URL(url()).hostname === 'localhost', `hôte inattendu ${url()}`);
+    const here = await url();
+    expect(new URL(here).hostname === 'localhost', `hôte inattendu ${here}`);
     await page.screenshot({ path: `${OUT}/01-login.png` });
   });
 
@@ -164,8 +220,7 @@ try {
     await click(/qr code/i);
     await waitFor(() => page.evaluate(() => [...document.querySelectorAll('svg')].some((e) => e.querySelectorAll('path,rect').length > 20)), 'SVG du QR code');
     await page.screenshot({ path: `${OUT}/04-qr.png` });
-    await page.keyboard.press('Escape').catch(() => {});
-  });
+      });
 
   await step('Persistance : fermeture complète puis réouverture', async () => {
     await closeConnection();
@@ -239,14 +294,14 @@ try {
     await go('/');
     await go('/donnees');
     sh('shell', 'input', 'keyevent', 'KEYCODE_BACK');
-    await waitFor(() => new URL(url()).pathname === '/', 'retour à l’accueil via le bouton Retour');
+    await waitFor(async () => new URL(await url()).pathname === '/', 'retour à l’accueil via le bouton Retour');
   });
 
   await step('Déconnexion', async () => {
     await click(/déconnexion/i);
-    await waitFor(() => url().includes('/login'), 'retour à la page de connexion');
+    await waitFor(async () => (await url()).includes('/login'), 'retour à la page de connexion');
     await go('/');
-    await waitFor(() => url().includes('/login'), 'accès protégé après déconnexion');
+    await waitFor(async () => (await url()).includes('/login'), 'accès protégé après déconnexion');
   });
 
   await step('Absence de plantage (logcat)', async () => {
