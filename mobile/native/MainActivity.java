@@ -2,6 +2,7 @@ package com.hydroloopfarm.manager;
 
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 
 import com.getcapacitor.Bridge;
@@ -53,5 +54,12 @@ public class MainActivity extends BridgeActivity {
                 if (trusted) view.evaluateJavascript(JS, null);
             }
         });
+    }
+
+    /** Écrit les cookies (session) sur disque dès que l'application quitte l'avant-plan : la session survit à la fermeture. */
+    @Override
+    public void onPause() {
+        super.onPause();
+        CookieManager.getInstance().flush();
     }
 }

@@ -224,11 +224,17 @@ try {
 
   await step('Persistance : fermeture complète puis réouverture', async () => {
     await closeConnection();
+    // Comme un utilisateur : l'application passe en arrière-plan (onPause/onStop), puis le système la tue.
+    sh('shell', 'input', 'keyevent', 'KEYCODE_HOME');
+    await sleep(2500);
     sh('shell', 'am', 'force-stop', PKG);
     await sleep(1500);
     await launchAndConnect();
     await go('/');
-    await waitFor(async () => (await text()).includes(idA), `culture ${idA} présente après redémarrage`);
+    await waitFor(async () => (await text()).includes(idA), `culture ${idA} présente après redémarrage`).catch(async (e) => {
+      const dbs = await page.evaluate(async () => (indexedDB.databases ? (await indexedDB.databases()).map((d) => d.name) : ['?']));
+      throw new Error(`${e.message} — url=${await url()} bases=${JSON.stringify(dbs)} corps="${(await text()).replace(/\s+/g, ' ').slice(0, 160)}"`);
+    });
     await go(`/batch/${idA}`);
     await waitFor(async () => /7[.,]2/.test(await text()), 'relevés conservés après redémarrage');
   });
