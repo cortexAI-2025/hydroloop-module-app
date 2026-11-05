@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Exécuté DANS l'émulateur (android-emulator-runner) : installe l'APK de test et lance le scénario.
 set -euo pipefail
-APK="${1:?chemin de l'APK}"
+APK="${1:?chemin de lapk requis}"
 adb wait-for-device
 adb reverse tcp:3100 tcp:3100
 adb reverse tcp:3199 tcp:3199
