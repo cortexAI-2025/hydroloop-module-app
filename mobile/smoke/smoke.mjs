@@ -188,7 +188,7 @@ try {
   await step('Démarrage de l’application (WebView, pas de page d’erreur)', async () => {
     await launchAndConnect();
     await go('/login');
-    expect((await page.title()) !== '', 'titre vide');
+    await waitFor(async () => (await page.title()) !== '' && (await text()).trim() !== '', 'page de connexion rendue (titre et contenu)', 45_000);
     const body = await text();
     expect(!/ERR_|webpage is not available|page web est inaccessible/i.test(body), `page d’erreur : ${body.slice(0, 120)}`);
     const here = await url();
