@@ -224,6 +224,8 @@ jobs:
           set -o pipefail
           bash mobile/scripts/build-apk.sh
           cp mobile/android/app/build/outputs/apk/debug/app-debug.apk smoke.apk
+      - name: Pilote DevTools pour la WebView (outil de test, hors dépendances du produit)
+        run: npm install --no-save --no-audit --no-fund puppeteer-core@24
       - name: Activer KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
