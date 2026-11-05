@@ -218,7 +218,7 @@ try {
 
   await step('Affichage du QR code', async () => {
     await click(/qr code/i);
-    await waitFor(() => page.evaluate(() => [...document.querySelectorAll('svg')].some((e) => e.querySelectorAll('path,rect').length > 20)), 'SVG du QR code');
+    await waitFor(() => page.evaluate(() => [...document.querySelectorAll('svg')].some((e) => [...e.querySelectorAll('path')].some((p) => (p.getAttribute('d') || '').length > 200) && e.getBoundingClientRect().width > 60)), 'SVG du QR code');
     await page.screenshot({ path: `${OUT}/04-qr.png` });
       });
 
