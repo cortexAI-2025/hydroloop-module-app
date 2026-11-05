@@ -65,9 +65,16 @@ function post() {
   // Manifeste : portrait, clavier, pas de sauvegarde Android des données, trafic en clair interdit
   const man = `${android}/app/src/main/AndroidManifest.xml`;
   let m = read(man);
-  m = m.replace(/android:allowBackup="[^"]*"/, 'android:allowBackup="false"');
-  if (!/android:networkSecurityConfig/.test(m)) m = m.replace('<application', '<application\n        android:networkSecurityConfig="@xml/network_security_config"\n        android:usesCleartextTraffic="false"');
-  if (!/android:screenOrientation/.test(m)) m = m.replace('<activity', '<activity\n            android:screenOrientation="portrait"\n            android:windowSoftInputMode="adjustResize"');
+  const setAttr = (tag, name, value) => {
+    // idempotent : retire l'attribut existant puis l'ajoute sur la balise ouvrante
+    m = m.replace(new RegExp(`(<${tag}\\b[^>]*?)\\s+${name.replace(':', '\\:')}="[^"]*"`), '$1');
+    m = m.replace(`<${tag}`, `<${tag}\n        ${name}="${value}"`);
+  };
+  setAttr('application', 'android:allowBackup', 'false');
+  setAttr('application', 'android:networkSecurityConfig', '@xml/network_security_config');
+  setAttr('application', 'android:usesCleartextTraffic', SMOKE ? 'true' : 'false');
+  setAttr('activity', 'android:screenOrientation', 'portrait');
+  setAttr('activity', 'android:windowSoftInputMode', 'adjustResize');
   write(man, m);
   const perms = [...m.matchAll(/<uses-permission[^>]*android:name="([^"]+)"/g)].map((x) => x[1]);
   const extra = perms.filter((p) => p !== 'android.permission.INTERNET');
