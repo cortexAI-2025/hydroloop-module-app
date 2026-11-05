@@ -1,0 +1,8 @@
+node_modules/
+# Le projet Android généré est reproductible (npm run configure:pre && cap add android && configure:post)
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+*.log

@@ -1,0 +1,168 @@
+name: Android APK
+
+# Construit l'APK bêta HydroLoop Farm Manager (conteneur Capacitor qui charge l'application HTTPS).
+# Aucun secret serveur n'est lu ni embarqué : seule l'URL publique de l'application est injectée.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "URL HTTPS de l'application chargée par l'APK"
+        required: false
+        default: 'https://app.hydroloopfarm.com'
+      smoke:
+        description: "Lancer aussi le test sur émulateur (instance de recette locale, faux Supabase)"
+        type: boolean
+        default: true
+  push:
+    branches: ['feat/android-capacitor-apk-v1']
+    paths: ['mobile/**', '.github/workflows/android-apk.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APK_NAME: HydroLoop-Farm-Manager-v1.0-beta.apk
+  HYDROLOOP_APP_URL: ${{ github.event.inputs.app_url || 'https://app.hydroloopfarm.com' }}
+  VERSION_NAME: 1.0-beta
+  VERSION_CODE: '1'
+
+jobs:
+  build:
+    name: Compilation de l'APK (debug bêta)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21   # exigé par la chaîne Capacitor 7 / AGP 8.7 (le projet web n'est pas concerné)
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      # ── Application web : tests existants (la version web n'est pas modifiée) ──
+      - name: Dépendances de l'application web
+        run: npm ci
+      - name: Tests de l'application web
+        run: npm test
+
+      # ── Conteneur Android ──
+      - name: Dépendances Capacitor
+        working-directory: mobile
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::mobile/package-lock.json absent : généré par ce run (à commiter depuis l'artefact mobile-package-lock)."
+            npm install
+          fi
+      - name: Configuration Capacitor
+        working-directory: mobile
+        run: node scripts/configure.mjs pre
+      - name: Projet Android
+        working-directory: mobile
+        run: |
+          if [ ! -d android/app ]; then npx cap add android; fi
+          node scripts/configure.mjs post
+      - name: Icônes et écran de démarrage
+        working-directory: mobile
+        run: npx capacitor-assets generate --android
+      - name: Synchronisation Capacitor
+        working-directory: mobile
+        run: |
+          npx cap sync android
+          node scripts/configure.mjs post
+
+      - name: Compilation Gradle (assembleDebug)
+        working-directory: mobile/android
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee ../gradle-build.log
+
+      - name: Vérification de l'APK
+        run: |
+          set -euo pipefail
+          SRC=mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          [ -s "$SRC" ] || { echo "::error::APK absent ou vide"; exit 1; }
+          mkdir -p dist
+          cp "$SRC" "dist/$APK_NAME"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump badging "dist/$APK_NAME" > dist/badging.txt
+          grep -E "^package:|sdkVersion|targetSdkVersion|uses-permission|launchable-activity" dist/badging.txt | tee dist/apk-info.txt
+          grep -q "name='com.hydroloopfarm.manager'" dist/badging.txt
+          grep -q "versionName='1.0-beta'" dist/badging.txt
+          grep -q "^sdkVersion:'26'" dist/badging.txt
+          grep -q "^targetSdkVersion:'35'" dist/badging.txt
+          PERMS=$(grep -c "^uses-permission" dist/badging.txt || true)
+          [ "$PERMS" -le 1 ] || { echo "::error::permissions inattendues"; grep "^uses-permission" dist/badging.txt; exit 1; }
+          "$BT/apksigner" verify --verbose "dist/$APK_NAME" | tee dist/apksigner.txt
+          SIZE=$(stat -c %s "dist/$APK_NAME"); echo "taille: $SIZE octets"
+          [ "$SIZE" -gt 1000000 ] || { echo "::error::APK trop petit"; exit 1; }
+          sha256sum "dist/$APK_NAME" | tee dist/SHA256SUMS.txt
+          cp mobile/gradle-build.log dist/gradle-build.log
+          # aucun secret serveur dans l'APK : motifs connus
+          mkdir -p /tmp/apk && cd /tmp/apk && unzip -q -o "$GITHUB_WORKSPACE/dist/$APK_NAME"
+          if grep -rIlE "sk-ant-|service_role|SUPABASE_JWT_SECRET|NEXTAUTH_SECRET|AUTH_USERS" /tmp/apk >/dev/null 2>&1; then
+            echo "::error::motif de secret trouvé dans l'APK"; exit 1; fi
+          echo "Aucun motif de secret dans l'APK." | tee -a "$GITHUB_WORKSPACE/dist/apk-info.txt"
+
+      - name: Résumé
+        run: |
+          {
+            echo "### APK bêta"
+            echo "- Fichier : \`$APK_NAME\`"
+            echo "- URL chargée : \`$HYDROLOOP_APP_URL\`"
+            echo '```'; cat dist/apk-info.txt; cat dist/SHA256SUMS.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hydroloop-android-v1-beta
+          path: |
+            dist/${{ env.APK_NAME }}
+            dist/SHA256SUMS.txt
+            dist/apk-info.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hydroloop-android-build-logs
+          path: |
+            mobile/gradle-build.log
+            dist/gradle-build.log
+            dist/badging.txt
+            dist/apksigner.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Fichiers à commiter (lockfile, projet Android généré)
+        if: always()
+        run: |
+          mkdir -p handoff
+          [ -f mobile/package-lock.json ] && cp mobile/package-lock.json handoff/ || true
+          [ -d mobile/android ] && tar --exclude='.gradle' --exclude='build' --exclude='local.properties' --exclude='node_modules' -czf handoff/android-project.tgz -C mobile android capacitor.config.json || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-handoff
+          path: handoff/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,21 @@
+{
+  "name": "hydroloop-farm-manager-android",
+  "version": "1.0.0-beta",
+  "private": true,
+  "description": "Conteneur Android (Capacitor) de HydroLoop Farm Manager — charge l'application HTTPS existante.",
+  "scripts": {
+    "configure:pre": "node scripts/configure.mjs pre",
+    "configure:post": "node scripts/configure.mjs post",
+    "assets": "capacitor-assets generate --android",
+    "sync": "cap sync android",
+    "build:debug": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "~7.4.0",
+    "@capacitor/core": "~7.4.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "~7.4.0"
+  }
+}
