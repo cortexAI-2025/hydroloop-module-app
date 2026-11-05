@@ -1,0 +1,18 @@
+{
+  "appId": "com.hydroloopfarm.manager",
+  "appName": "HydroLoop Farm Manager",
+  "webDir": "www",
+  "server": {
+    "url": "https://app.hydroloopfarm.com",
+    "cleartext": false,
+    "allowNavigation": [
+      "app.hydroloopfarm.com"
+    ]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false,
+    "backgroundColor": "#f0fdf4",
+    "appendUserAgent": "HydroLoopAndroid/1.0-beta"
+  }
+}
