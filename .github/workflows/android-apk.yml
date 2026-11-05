@@ -61,39 +61,11 @@ jobs:
       - name: Tests de l'application web
         run: npm test
 
-      # ── Conteneur Android ──
-      - name: Dépendances Capacitor
-        working-directory: mobile
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            echo "::warning::mobile/package-lock.json absent : généré par ce run (à commiter depuis l'artefact mobile-package-lock)."
-            npm install
-          fi
-      - name: Configuration Capacitor
-        working-directory: mobile
-        run: node scripts/configure.mjs pre
-      - name: Projet Android
-        working-directory: mobile
-        run: |
-          if [ ! -d android/app ]; then npx cap add android; fi
-          node scripts/configure.mjs post
-      - name: Icônes et écran de démarrage
-        working-directory: mobile
-        run: npx capacitor-assets generate --android
-      - name: Synchronisation Capacitor
-        working-directory: mobile
-        run: |
-          npx cap sync android
-          node scripts/configure.mjs post
-
-      - name: Compilation Gradle (assembleDebug)
-        working-directory: mobile/android
+      # ── Conteneur Android (script partagé avec le job de test sur émulateur) ──
+      - name: Construction du conteneur et compilation Gradle (assembleDebug)
         run: |
           set -o pipefail
-          chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee ../gradle-build.log
+          bash mobile/scripts/build-apk.sh
 
       - name: Vérification de l'APK
         run: |
@@ -165,5 +137,114 @@ jobs:
         with:
           name: mobile-handoff
           path: handoff/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  commit-generated:
+    name: Commit du lockfile et du projet Android générés
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-handoff
+          path: handoff
+      - name: Commiter les fichiers générés s'ils sont absents
+        run: |
+          set -euo pipefail
+          CHANGED=0
+          if [ ! -f mobile/package-lock.json ] && [ -f handoff/package-lock.json ]; then
+            cp handoff/package-lock.json mobile/package-lock.json; CHANGED=1
+          fi
+          if [ ! -d mobile/android/app ] && [ -f handoff/android-project.tgz ]; then
+            tar -xzf handoff/android-project.tgz -C mobile; CHANGED=1
+          fi
+          if [ "$CHANGED" = 1 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A mobile
+            git commit -m "chore(android): lockfile Capacitor et projet Android générés par le workflow"
+            git push
+          else
+            echo "Rien à commiter."
+          fi
+
+  smoke:
+    name: Test sur émulateur Android (parcours principaux)
+    needs: build
+    if: github.event_name == 'push' || github.event.inputs.smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # environnement de recette : données fictives, faux Supabase local, aucune production
+      AUTH_USERS: 'alice:pw-alice-test,bob:pw-bob-test'
+      NEXTAUTH_SECRET: recette-nextauth-secret-ci
+      NEXTAUTH_URL: http://localhost:3100
+      SUPABASE_JWT_SECRET: e2e-supabase-jwt-secret
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:3199
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: anon-test-key
+      ANTHROPIC_API_KEY: ''
+      MOCK_PORT: '3199'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - run: npm ci
+      - name: Application web de recette (build + faux Supabase)
+        run: |
+          npx next build
+          nohup node e2e/mock-supabase.mjs > mock.log 2>&1 &
+          nohup npx next start -p 3100 > next.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://localhost:3100/login >/dev/null && break; sleep 2; done
+          curl -fsS http://localhost:3100/login >/dev/null
+          curl -fsS http://127.0.0.1:3199/__stats >/dev/null
+      - name: APK de test (même code, URL de recette en clair uniquement pour localhost)
+        env:
+          SMOKE: '1'
+          HYDROLOOP_APP_URL: http://localhost:3100
+        run: |
+          set -o pipefail
+          bash mobile/scripts/build-apk.sh
+          cp mobile/android/app/build/outputs/apk/debug/app-debug.apk smoke.apk
+      - name: Activer KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Émulateur Android 34 (x86_64) et scénario
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash mobile/smoke/run.sh smoke.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hydroloop-android-smoke-report
+          path: |
+            smoke-out/
+            mock.log
+            next.log
           if-no-files-found: ignore
           retention-days: 14
